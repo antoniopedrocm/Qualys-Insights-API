@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Qualys Security Dashboard
 
 Dashboard para visualização e análise de vulnerabilidades do Qualys.
@@ -42,3 +43,6 @@ Acesse: `http://localhost:3000`
 
 - Credenciais da API Web: admin / admin123 (configurável no .env)
 - Endpoints disponíveis em `/api/*`
+=======
+# Qualys-Insights-API
+>>>>>>> c0e43b82d73f958147e1724c553254a842b2d292
