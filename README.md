@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Qualys Security Dashboard
 
 Dashboard para visualização e análise de vulnerabilidades do Qualys.
@@ -6,14 +7,16 @@ Dashboard para visualização e análise de vulnerabilidades do Qualys.
 
 1. Clone o repositório
 2. Instale as dependências:
-   ```bash
-   npm install
-   ```
+```bash
+npm install
+```
+
 3. Configure as credenciais:
-   ```bash
-   cp .env.example .env
-   ```
-4. Edite o arquivo `.env` e adicione suas credenciais do Qualys.
+```bash
+cp .env.example .env
+```
+
+4. Edite o arquivo `.env` e adicione suas credenciais do Qualys
 
 ## ⚙️ Configuração
 
@@ -38,5 +41,8 @@ Acesse: `http://localhost:3000`
 
 ## 📚 Documentação
 
-- Credenciais da API Web: `admin` / `admin123` (configurável no `.env`)
+- Credenciais da API Web: admin / admin123 (configurável no .env)
 - Endpoints disponíveis em `/api/*`
+=======
+# Qualys-Insights-API
+>>>>>>> c0e43b82d73f958147e1724c553254a842b2d292
