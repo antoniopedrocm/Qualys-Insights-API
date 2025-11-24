@@ -115,66 +115,43 @@
       <!-- ====================== -->
       <div id="vulnerabilities" class="tab-content">
         <div class="filter-section">
-          <div class="filter-section__header">
-            <div>
-              <p class="eyebrow">FILTRE SUA BUSCA</p>
-              <h3>Encontre vulnerabilidades com mais facilidade</h3>
-              <p class="helper-text">Combine a busca rápida com a seleção de tags e severidades para chegar ao resultado ideal.</p>
+          <h3>Filtros Avançados</h3>
+          <div class="filter-grid">
+            <!-- Filtro de Severidade -->
+            <div class="filter-group">
+              <label>Severidade:</label>
+              <div class="checkbox-group">
+                <label><input type="checkbox" class="severity-filter" value="5" checked onchange="applyFilters()"><span class="sev-5">Crítica</span></label>
+                <label><input type="checkbox" class="severity-filter" value="4" checked onchange="applyFilters()"><span class="sev-4">Alta</span></label>
+                <label><input type="checkbox" class="severity-filter" value="3" checked onchange="applyFilters()"><span class="sev-3">Média</span></label>
+                <label><input type="checkbox" class="severity-filter" value="2" checked onchange="applyFilters()"><span class="sev-2">Baixa</span></label>
+                <label><input type="checkbox" class="severity-filter" value="1" checked onchange="applyFilters()"><span class="sev-1">Info</span></label>
+              </div>
             </div>
-            <div class="filter-actions">
-              <button class="btn btn-secondary" onclick="clearFilters()">🗑️ Limpar Filtros</button>
-              <button class="btn" onclick="exportFiltered()">📥 Exportar Filtrados (CSV)</button>
+            <!-- Filtros de Busca -->
+            <div class="filter-group">
+              <label>Busca por Host:</label>
+              <input type="text" id="filterIp" placeholder="🔍 Buscar por IP (ex: 10.62)" onkeyup="applyFilters()">
+              <input type="text" id="filterDns" placeholder="🔍 Buscar por DNS (ex: sap70)" onkeyup="applyFilters()">
+            </div>
+            <!-- Outros Filtros -->
+            <div class="filter-group">
+              <label>Outros Filtros:</label>
+              <input type="text" id="filterQid" placeholder="🔍 Buscar por QID" onkeyup="applyFilters()">
+              <input type="text" id="filterTags" placeholder="🏷️ Buscar por Tags (ex: PRD_Alta)" onkeyup="applyFilters()">
+              <input type="text" id="filterCve" placeholder="🔐 Buscar por CVE (ex: CVE-2024)" onkeyup="applyFilters()">
+              <select id="filterStatus" onchange="applyFilters()">
+                <option value="">📊 Todos os Status</option>
+                <option value="New">Novo</option>
+                <option value="Active">Ativo</option>
+                <option value="Re-Opened">Reaberto</option>
+                <option value="Fixed">Corrigido</option>
+              </select>
             </div>
           </div>
-
-          <div class="filter-row">
-            <div class="filter-card">
-              <div class="filter-card__label">Filtrar por Severidade</div>
-              <div class="severity-chips">
-                <label class="severity-chip sev-5"><input type="checkbox" class="severity-filter" value="5" checked onchange="applyFilters()"><span>Crítica</span></label>
-                <label class="severity-chip sev-4"><input type="checkbox" class="severity-filter" value="4" checked onchange="applyFilters()"><span>Alta</span></label>
-                <label class="severity-chip sev-3"><input type="checkbox" class="severity-filter" value="3" checked onchange="applyFilters()"><span>Média</span></label>
-                <label class="severity-chip sev-2"><input type="checkbox" class="severity-filter" value="2" checked onchange="applyFilters()"><span>Baixa</span></label>
-                <label class="severity-chip sev-1"><input type="checkbox" class="severity-filter" value="1" checked onchange="applyFilters()"><span>Info</span></label>
-              </div>
-            </div>
-
-            <div class="filter-card">
-              <div class="filter-card__label">Busca rápida</div>
-              <div class="input-icon">
-                <span>🔎</span>
-                <input type="text" id="filterQuickSearch" placeholder="Busque por IP, DNS, título, solução, porta..." oninput="applyFilters()">
-              </div>
-              <p class="helper-text">Digite qualquer termo: IP, DNS, título, solução, QID, porta ou protocolo.</p>
-            </div>
-          </div>
-
-          <div class="filter-row">
-            <div class="filter-card">
-              <div class="filter-card__label">Tags disponíveis</div>
-              <div class="input-icon">
-                <span>🏷️</span>
-                <select id="filterTagSelect" onchange="applyFilters()">
-                  <option value="">Todas as tags</option>
-                </select>
-              </div>
-              <p class="helper-text">Selecione uma tag cadastrada para refinar a lista.</p>
-            </div>
-
-            <div class="filter-card filter-card--compact">
-              <div class="filter-card__label">Filtros adicionais</div>
-              <div class="compact-grid">
-                <input type="text" id="filterQid" placeholder="🔍 Buscar por QID" onkeyup="applyFilters()">
-                <input type="text" id="filterCve" placeholder="🔐 Buscar por CVE (ex: CVE-2024)" onkeyup="applyFilters()">
-                <select id="filterStatus" onchange="applyFilters()">
-                  <option value="">📊 Todos os Status</option>
-                  <option value="New">Novo</option>
-                  <option value="Active">Ativo</option>
-                  <option value="Re-Opened">Reaberto</option>
-                  <option value="Fixed">Corrigido</option>
-                </select>
-              </div>
-            </div>
+          <div class="filter-actions">
+            <button class="btn btn-secondary" onclick="clearFilters()">🗑️ Limpar Filtros</button>
+            <button class="btn" onclick="exportFiltered()">📥 Exportar Filtrados (CSV)</button>
           </div>
         </div>
 
@@ -184,17 +161,17 @@
             <table>
               <thead>
                 <tr>
-                  <th>Host IP</th>
                   <th>DNS</th>
+                  <th>Host IP</th>
                   <th>Sistema Operacional</th>
-                  <th>QID</th>
-                  <th>Título</th>
-                  <th>Severidade</th>
-                  <th>Status</th>
-                  <th>Porta</th>
-                  <th>Protocolo</th>
+                  <th>Título</th>			
                   <th>Solução</th>
                   <th>Resultados</th>
+                  <th>Severidade</th>	
+                  <th>Status</th>				  
+                  <th>QID</th>
+                  <th>Porta</th>
+                  <th>Protocolo</th>
                   <th>Primeira Detecção</th>
                 </tr>
               </thead>
