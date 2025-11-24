@@ -303,12 +303,16 @@ function displayVulnerabilities(vulns) {
     <tr>
       <td>${v.hostIp || ''}</td>
       <td>${v.hostDns || ''}</td>
+      <td>${v.os || ''}</td>
       <td>${v.qid || ''}</td>
+      <td>${v.title || ''}</td>
       <td class="severity-${severityClass[v.severity]}">${severityLabel[v.severity] || v.severity}</td>
       <td>${v.status || ''}</td>
       <td>${v.port || ''}</td>
       <td>${v.protocol || ''}</td>
       <td>${v.firstFound ? v.firstFound.split('T')[0] : ''}</td>
+      <td>${v.solution || ''}</td>
+      <td>${v.results || ''}</td>
     </tr>
   `).join('');
 }
