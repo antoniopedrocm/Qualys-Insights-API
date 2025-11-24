@@ -284,6 +284,7 @@ async function loadVulnerabilities() {
     const data = await apiCall('/api/vulnerabilities');
     currentData.vulnerabilities = data.data || [];
     currentData.filteredVulnerabilities = data.data || [];
+    buildTagFilterOptions(currentData.vulnerabilities);
     displayVulnerabilities(currentData.vulnerabilities);
     document.getElementById('vulnTotal').textContent = currentData.vulnerabilities.length;
     showLoading(false);
@@ -297,7 +298,7 @@ async function loadVulnerabilities() {
 function displayVulnerabilities(vulns) {
   const severityLabel = { '5': 'Crítica', '4': 'Alta', '3': 'Média', '2': 'Baixa', '1': 'Info' };
   const severityClass = { '5': 'critical', '4': 'high', '3': 'medium', '2': 'low', '1': 'low' };
-  
+
   document.getElementById('vulnCount').textContent = vulns.length;
   document.getElementById('vulnTableBody').innerHTML = vulns.map(v => `
     <tr>
@@ -310,27 +311,45 @@ function displayVulnerabilities(vulns) {
       <td>${v.status || ''}</td>
       <td>${v.port || ''}</td>
       <td>${v.protocol || ''}</td>
-      <td>${v.firstFound ? v.firstFound.split('T')[0] : ''}</td>
       <td>${v.solution || ''}</td>
       <td>${v.results || ''}</td>
+      <td>${v.firstFound ? v.firstFound.split('T')[0] : ''}</td>
     </tr>
   `).join('');
+}
+
+function buildTagFilterOptions(vulns) {
+  const tagSelect = document.getElementById('filterTagSelect');
+  if (!tagSelect) return;
+
+  const tagSet = new Set();
+  vulns.forEach(v => {
+    if (v.hostTags) {
+      v.hostTags.split(/[,;]/).map(tag => tag.trim()).filter(Boolean).forEach(tag => tagSet.add(tag));
+    }
+  });
+
+  const options = ['<option value="">Todas as tags</option>'];
+  Array.from(tagSet).sort((a, b) => a.localeCompare(b)).forEach(tag => {
+    options.push(`<option value="${tag}">${tag}</option>`);
+  });
+
+  tagSelect.innerHTML = options.join('');
 }
 
 function applyFilters() {
   const selectedSeverities = Array.from(document.querySelectorAll('.severity-filter:checked'))
     .map(cb => cb.value);
-  
-  const ip = document.getElementById('filterIp').value.toLowerCase().trim();
-  const dns = document.getElementById('filterDns').value.toLowerCase().trim();
+
+  const quickSearch = document.getElementById('filterQuickSearch').value.toLowerCase().trim();
+  const selectedTag = document.getElementById('filterTagSelect').value.toLowerCase();
   const qid = document.getElementById('filterQid').value.trim();
-  const tags = document.getElementById('filterTags').value.toLowerCase().trim();
   const cve = document.getElementById('filterCve').value.toUpperCase().trim();
   const status = document.getElementById('filterStatus').value;
 
   let filtered = currentData.vulnerabilities;
 
-  const hasActiveFilters = selectedSeverities.length < 5 || ip || dns || qid || tags || cve || status;
+  const hasActiveFilters = selectedSeverities.length < 5 || quickSearch || selectedTag || qid || cve || status;
 
   if (!hasActiveFilters) {
     currentData.filteredVulnerabilities = filtered;
@@ -342,21 +361,36 @@ function applyFilters() {
   if (selectedSeverities.length > 0 && selectedSeverities.length < 5) {
     filtered = filtered.filter(v => selectedSeverities.includes(v.severity));
   }
-  // Filtro de IP
-  if (ip) {
-    filtered = filtered.filter(v => v.hostIp && v.hostIp.toLowerCase().includes(ip));
+  // Busca rápida
+  if (quickSearch) {
+    filtered = filtered.filter(v => {
+      const candidates = [
+        v.hostIp,
+        v.hostDns,
+        v.title,
+        v.solution,
+        v.qid,
+        v.os,
+        v.port,
+        v.protocol,
+        v.hostTags,
+        v.results
+      ];
+
+      return candidates.some(field => String(field || '').toLowerCase().includes(quickSearch));
+    });
   }
-  // Filtro de DNS
-  if (dns) {
-    filtered = filtered.filter(v => v.hostDns && v.hostDns.toLowerCase().includes(dns));
+  // Filtro de tags
+  if (selectedTag) {
+    filtered = filtered.filter(v => {
+      if (!v.hostTags) return false;
+      const tags = v.hostTags.toLowerCase().split(/[,;]/).map(tag => tag.trim()).filter(Boolean);
+      return tags.includes(selectedTag);
+    });
   }
   // Filtro de QID
   if (qid) {
     filtered = filtered.filter(v => v.qid === qid);
-  }
-  // Filtro de Tags
-  if (tags) {
-    filtered = filtered.filter(v => v.hostTags && v.hostTags.toLowerCase().includes(tags));
   }
   // Filtro de CVE
   if (cve) {
@@ -377,10 +411,9 @@ function applyFilters() {
 
 function clearFilters() {
   document.querySelectorAll('.severity-filter').forEach(cb => cb.checked = true);
-  document.getElementById('filterIp').value = '';
-  document.getElementById('filterDns').value = '';
+  document.getElementById('filterQuickSearch').value = '';
+  document.getElementById('filterTagSelect').value = '';
   document.getElementById('filterQid').value = '';
-  document.getElementById('filterTags').value = '';
   document.getElementById('filterCve').value = '';
   document.getElementById('filterStatus').value = '';
 
