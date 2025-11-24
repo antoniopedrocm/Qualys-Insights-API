@@ -38,10 +38,35 @@ const auth = basicAuth({
 });
 
 const cache = {
-  vulnerabilities: null,
-  hosts: null,
-  lastUpdate: null,
+  vulnerabilities: {
+    data: null,
+    lastUpdate: null
+  },
+  hosts: {
+    data: null,
+    lastUpdate: null
+  },
   ttl: 300000
+};
+
+const getCachedData = async (cacheEntry, fetchFunction) => {
+  const now = Date.now();
+  if (cacheEntry.data && cacheEntry.lastUpdate && now - cacheEntry.lastUpdate < cache.ttl) {
+    return { data: cacheEntry.data, cached: true, stale: false };
+  }
+
+  try {
+    const data = await fetchFunction();
+    cacheEntry.data = data;
+    cacheEntry.lastUpdate = now;
+    return { data, cached: false, stale: false };
+  } catch (error) {
+    if (cacheEntry.data) {
+      console.warn('Falha ao atualizar, retornando dados em cache:', error.message);
+      return { data: cacheEntry.data, cached: true, stale: true };
+    }
+    throw error;
+  }
 };
 
 const qualysClient = axios.create({
@@ -267,25 +292,13 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/hosts', auth, async (req, res) => {
   try {
-    const now = Date.now();
-    
-    if (cache.hosts && cache.lastUpdate && (now - cache.lastUpdate) < cache.ttl) {
-      return res.json({
-        success: true,
-        total: cache.hosts.length,
-        cached: true,
-        data: cache.hosts
-      });
-    }
-    
-    const hosts = await qualysAPI.getHostList();
-    cache.hosts = hosts;
-    cache.lastUpdate = now;
-    
+    const { data: hosts, cached, stale } = await getCachedData(cache.hosts, () => qualysAPI.getHostList());
+
     res.json({
       success: true,
       total: hosts.length,
-      cached: false,
+      cached,
+      stale,
       data: hosts
     });
   } catch (error) {
@@ -300,25 +313,13 @@ app.get('/api/hosts', auth, async (req, res) => {
 
 app.get('/api/vulnerabilities', auth, async (req, res) => {
   try {
-    const now = Date.now();
-    
-    if (cache.vulnerabilities && cache.lastUpdate && (now - cache.lastUpdate) < cache.ttl) {
-      return res.json({
-        success: true,
-        total: cache.vulnerabilities.length,
-        cached: true,
-        data: cache.vulnerabilities
-      });
-    }
-    
-    const vulnerabilities = await qualysAPI.getVulnerabilities();
-    cache.vulnerabilities = vulnerabilities;
-    cache.lastUpdate = now;
-    
+    const { data: vulnerabilities, cached, stale } = await getCachedData(cache.vulnerabilities, () => qualysAPI.getVulnerabilities());
+
     res.json({
       success: true,
       total: vulnerabilities.length,
-      cached: false,
+      cached,
+      stale,
       data: vulnerabilities
     });
   } catch (error) {
@@ -351,9 +352,9 @@ app.get('/api/scans', auth, async (req, res) => {
 
 app.get('/api/dashboard/summary', auth, async (req, res) => {
   try {
-    const [vulnerabilities, hosts] = await Promise.all([
-      qualysAPI.getVulnerabilities(),
-      qualysAPI.getHostList()
+    const [{ data: vulnerabilities }, { data: hosts }] = await Promise.all([
+      getCachedData(cache.vulnerabilities, () => qualysAPI.getVulnerabilities()),
+      getCachedData(cache.hosts, () => qualysAPI.getHostList())
     ]);
     
     const severityCount = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
@@ -439,7 +440,7 @@ app.get('/api/dashboard/summary', auth, async (req, res) => {
 
 app.get('/api/dashboard/trends', auth, async (req, res) => {
   try {
-    const vulnerabilities = await qualysAPI.getVulnerabilities();
+    const { data: vulnerabilities } = await getCachedData(cache.vulnerabilities, () => qualysAPI.getVulnerabilities());
     
     const dateCount = {};
     vulnerabilities.forEach(vuln => {
