@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Qualys Security Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Barra Lateral de Navegação -->
+    <nav class="sidebar">
+      <div class="sidebar-header">
+        <h1>🛡️ Q-Insights</h1>
+        <span>by Patmos Cyber</span>
+      </div>
+      <ul class="nav-tabs">
+        <li><button class="tab-btn active" onclick="showTab('dashboard')">📊 Dashboard Executivo</button></li>
+        <li><button class="tab-btn" onclick="showTab('vulnerabilities')">🔴 Análise de Vulnerabilidades</button></li>
+        <li><button class="tab-btn" onclick="showTab('hosts')">💻 Inventário de Hosts</button></li>
+        <li><button class="tab-btn" onclick="showTab('scans')">🔍 Status dos Scans</button></li>
+        <li><button class="tab-btn" onclick="showTab('api')">⚙️ API Explorer</button></li>
+      </ul>
+    </nav>
+
+    <!-- Conteúdo Principal -->
+    <main class="main-content">
+      <header class="main-header">
+        <h2 id="pageTitle">Dashboard Executivo</h2>
+        <div class="header-actions">
+          <button class="btn" id="refreshButton" onclick="loadDashboard()">🔄 Atualizar</button>
+          <button class="btn btn-secondary" onclick="exportExcel()">📊 Exportar Excel</button>
+          <button class="btn btn-secondary" onclick="exportCSV()">📄 Exportar CSV</button>
+        </div>
+      </header>
+
+      <div id="messages"></div>
+      
+      <div id="loadingIndicator" class="loading" style="display: none;">
+        <div class="spinner"></div>
+        <p>Carregando dados...</p>
+      </div>
+
+      <!-- ====================== -->
+      <!-- TAB: DASHBOARD         -->
+      <!-- ====================== -->
+      <div id="dashboard" class="tab-content active">
+        <!-- KPIs Principais -->
+        <div class="kpi-grid">
+          <div class="stat-card">
+            <h3>Total de Hosts</h3>
+            <div class="value" id="totalHosts">-</div>
+          </div>
+          <div class="stat-card">
+            <h3>Total de Vulnerabilidades</h3>
+            <div class="value" id="totalVulns">-</div>
+          </div>
+          <div class="stat-card sev-critical">
+            <h3>Críticas</h3>
+            <div class="value" id="criticalVulns">-</div>
+          </div>
+          <div class="stat-card sev-high">
+            <h3>Altas</h3>
+            <div class="value"T" id="highVulns">-</div>
+          </div>
+        </div>
+
+        <!-- Gráficos Executivos -->
+        <div class="charts-grid-col-2">
+          <div class="chart-container">
+            <h2>Distribuição por Severidade</h2>
+            <div class="chart-wrapper">
+              <canvas id="severityChart"></canvas>
+            </div>
+          </div>
+          
+          <div class="chart-container">
+            <h2>Tendência de Descobertas (Novas)</h2>
+            <div class="chart-wrapper">
+              <canvas id="trendsChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Gráficos por Ambiente -->
+        <h2 class="section-title">Vulnerabilidades por Ambiente (Críticas, Altas, Médias)</h2>
+        <div class="charts-grid-col-3">
+          <div class="chart-container">
+            <h2>🔧 Desenvolvimento e Qualidade</h2>
+            <canvas id="devQAChart"></canvas>
+          </div>
+          
+          <div class="chart-container">
+            <h2>⚠️ Produção Baixa</h2>
+            <canvas id="prdBaixaChart"></canvas>
+          </div>
+          
+          <div class="chart-container">
+            <h2>🔴 Produção Alta</h2>
+            <canvas id="prdAltaChart"></canvas>
+          </div>
+        </div>
+        
+        <div class="chart-container">
+          <h2>Top 10 Vulnerabilidades (QIDs)</h2>
+          <div class="chart-wrapper-large">
+            <canvas id="topVulnsChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- ====================== -->
+      <!-- TAB: VULNERABILIDADES  -->
+      <!-- ====================== -->
+      <div id="vulnerabilities" class="tab-content">
+        <div class="filter-section">
+          <h3>Filtros Avançados</h3>
+          <div class="filter-grid">
+            <!-- Filtro de Severidade -->
+            <div class="filter-group">
+              <label>Severidade:</label>
+              <div class="checkbox-group">
+                <label><input type="checkbox" class="severity-filter" value="5" checked onchange="applyFilters()"><span class="sev-5">Crítica</span></label>
+                <label><input type="checkbox" class="severity-filter" value="4" checked onchange="applyFilters()"><span class="sev-4">Alta</span></label>
+                <label><input type="checkbox" class="severity-filter" value="3" checked onchange="applyFilters()"><span class="sev-3">Média</span></label>
+                <label><input type="checkbox" class="severity-filter" value="2" checked onchange="applyFilters()"><span class="sev-2">Baixa</span></label>
+                <label><input type="checkbox" class="severity-filter" value="1" checked onchange="applyFilters()"><span class="sev-1">Info</span></label>
+              </div>
+            </div>
+            <!-- Filtros de Busca -->
+            <div class="filter-group">
+              <label>Busca por Host:</label>
+              <input type="text" id="filterIp" placeholder="🔍 Buscar por IP (ex: 10.62)" onkeyup="applyFilters()">
+              <input type="text" id="filterDns" placeholder="🔍 Buscar por DNS (ex: sap70)" onkeyup="applyFilters()">
+            </div>
+            <!-- Outros Filtros -->
+            <div class="filter-group">
+              <label>Outros Filtros:</label>
+              <input type="text" id="filterQid" placeholder="🔍 Buscar por QID" onkeyup="applyFilters()">
+              <input type="text" id="filterTags" placeholder="🏷️ Buscar por Tags (ex: PRD_Alta)" onkeyup="applyFilters()">
+              <input type="text" id="filterCve" placeholder="🔐 Buscar por CVE (ex: CVE-2024)" onkeyup="applyFilters()">
+              <select id="filterStatus" onchange="applyFilters()">
+                <option value="">📊 Todos os Status</option>
+                <option value="New">Novo</option>
+                <option value="Active">Ativo</option>
+                <option value="Re-Opened">Reaberto</option>
+                <option value="Fixed">Corrigido</option>
+              </select>
+            </div>
+          </div>
+          <div class="filter-actions">
+            <button class="btn btn-secondary" onclick="clearFilters()">🗑️ Limpar Filtros</button>
+            <button class="btn" onclick="exportFiltered()">📥 Exportar Filtrados (CSV)</button>
+          </div>
+        </div>
+
+        <div class="chart-container">
+          <h2>Lista de Vulnerabilidades (<span id="vulnCount">0</span> de <span id="vulnTotal">0</span>)</h2>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Host IP</th>
+                  <th>DNS</th>
+                  <th>QID</th>
+                  <th>Severidade</th>
+                  <th>Status</th>
+                  <th>Porta</th>
+                  <th>Protocolo</th>
+                  <th>Primeira Detecção</th>
+                </tr>
+              </thead>
+              <tbody id="vulnTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ====================== -->
+      <!-- TAB: HOSTS             -->
+      <!-- ====================== -->
+      <div id="hosts" class="tab-content">
+        <div class="filter-section">
+          <h3>Busca de Servidores</h3>
+          <div class="filter-group-single">
+            <input type="text" id="searchHost" placeholder="🔍 Buscar servidor (ex: SAP29, pratika, 10.62...)" onkeyup="filterHosts()">
+            <button class="btn btn-secondary" onclick="clearHostSearch()">🗑️ Limpar Busca</button>
+            <button class="btn" onclick="exportHosts()">📥 Exportar Hosts (CSV)</button>
+          </div>
+        </div>
+
+        <div class="chart-container">
+          <h2>Lista de Hosts (<span id="hostCount">0</span> de <span id="hostTotal">0</span>)</h2>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>IP</th>
+                  <th>DNS</th>
+                  <th>NetBIOS</th>
+                  <th>Tags</th>
+                  <th>N° Vuln. (C/A/M)</th>
+                  <th>OS</th>
+                  <th>Último Scan</th>
+                </tr>
+              </thead>
+              <tbody id="hostTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ====================== -->
+      <!-- TAB: SCANS             -->
+      <!-- ====================== -->
+      <div id="scans" class="tab-content">
+        <div class="chart-container">
+          <h2>Lista de Scans (<span id="scanCount">0</span>)</h2>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Referência</th>
+                  <th>Título</th>
+                  <th>Tipo</th>
+                  <th>Data de Execução</th>
+                  <th>Estado</th>
+                  <th>Alvo</th>
+                </tr>
+              </thead>
+              <tbody id="scanTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ====================== -->
+      <!-- TAB: API EXPLORER      -->
+      <!-- ====================== -->
+      <div id="api" class="tab-content">
+        <div class="chart-container">
+          <h2>API Explorer</h2>
+          <div class="filter-group-single" style="margin-bottom: 20px;">
+            <select id="apiEndpoint" style="flex-grow: 1;">
+              <option value="/api/health">GET /api/health (Health Check)</option>
+              <option value="/api/dashboard/summary">GET /api/dashboard/summary</option>
+              <option value="/api/vulnerabilities">GET /api/vulnerabilities</option>
+              <option value="/api/hosts">GET /api/hosts</option>
+              <option value="/api/scans">GET /api/scans</option>
+            </select>
+            <button class="btn" onclick="testApiEndpoint()">🚀 Executar</button>
+          </div>
+          <pre id="apiResponse" class="json-viewer">
+            Selecione um endpoint e clique em Executar
+          </pre>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

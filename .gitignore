@@ -1,0 +1,19 @@
+# Dependências
+node_modules/
+
+# Arquivos de ambiente (NUNCA enviar para o GitHub)
+.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
