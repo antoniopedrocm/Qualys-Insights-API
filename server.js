@@ -6,6 +6,7 @@ const ExcelJS = require('exceljs');
 const cors = require('cors');
 const basicAuth = require('express-basic-auth');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config(); // Carrega variáveis de ambiente
 
 const app = express();
@@ -286,12 +287,143 @@ class QualysAPI {
         target: scan.TARGET || ''
       });
     });
-    
+
     return scans;
+  }
+
+  async getDetectionById(detectionId) {
+    try {
+      const response = await qualysClient.get('/api/2.0/fo/asset/host/vm/detection/', {
+        params: {
+          action: 'list',
+          detection_ids: detectionId,
+          output_format: 'XML',
+          show_tags: '1'
+        },
+        timeout: 120000
+      });
+
+      const detections = await this.parseDetectionXML(response.data, detectionId);
+      return detections[0] || null;
+    } catch (error) {
+      console.error(`Erro ao obter detection ${detectionId}:`, error.message);
+      throw error;
+    }
+  }
+
+  async parseDetectionXML(xmlData, fallbackId) {
+    const parser = new xml2js.Parser({ explicitArray: false });
+    const result = await parser.parseStringPromise(xmlData);
+
+    const parsed = [];
+    const hostList = result?.HOST_LIST_VM_DETECTION_OUTPUT?.RESPONSE?.HOST_LIST?.HOST;
+    if (!hostList) return parsed;
+
+    const hostArray = Array.isArray(hostList) ? hostList : [hostList];
+
+    hostArray.forEach(host => {
+      const hostName = host.DNS || host.IP || '';
+      const hostTags = host.TAGS?.TAG;
+      const normalizedTags = hostTags
+        ? (Array.isArray(hostTags) ? hostTags : [hostTags])
+          .map(tag => String(tag.NAME || tag).replace(/\s+/g, '_').replace(/\//g, '_'))
+          .join(', ')
+        : '';
+
+      const detections = host.DETECTION_LIST?.DETECTION;
+      if (!detections) return;
+
+      const detectionArray = Array.isArray(detections) ? detections : [detections];
+      detectionArray.forEach(detection => {
+        parsed.push({
+          detectionId: detection.DETECTION_ID || fallbackId,
+          status: detection.STATUS || '',
+          severity: detection.SEVERITY || '',
+          qid: detection.QID || '',
+          host: hostName,
+          hostTags: normalizedTags,
+          lastFound: detection.LAST_FOUND_DATETIME || detection.LAST_FOUND || ''
+        });
+      });
+    });
+
+    return parsed;
   }
 }
 
 const qualysAPI = new QualysAPI();
+
+const detectionWindows = ['DEV_QA', 'PRD_Baixa', 'PRD_Alta'];
+
+const readDetectionIdsFromCSV = async () => {
+  const filePath = path.join(__dirname, 'detection_ids.csv');
+
+  if (!fs.existsSync(filePath)) {
+    throw new Error('Arquivo detection_ids.csv não encontrado na raiz da aplicação.');
+  }
+
+  const content = await fs.promises.readFile(filePath, 'utf-8');
+  const lines = content.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+
+  if (lines.length === 0) {
+    throw new Error('Arquivo detection_ids.csv está vazio.');
+  }
+
+  const [header, ...rows] = lines;
+  const detectionIds = rows
+    .map(id => id.replace(/"/g, '').trim())
+    .filter(id => id)
+    .filter(id => /^\d+$/.test(id));
+
+  if (detectionIds.length === 0) {
+    throw new Error('Nenhum Detection ID válido encontrado no arquivo detection_ids.csv.');
+  }
+
+  return detectionIds;
+};
+
+const classifyWindow = (detection) => {
+  const severity = Number(detection.severity) || 0;
+  if (severity >= 4) return 'PRD_Alta';
+  if (severity === 3) return 'PRD_Baixa';
+  return 'DEV_QA';
+};
+
+const normalizeStatus = (status = '') => status.trim().toLowerCase();
+
+const buildEffectivenessSummary = (detections) => {
+  const summary = {
+    DEV_QA: { total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 },
+    PRD_Baixa: { total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 },
+    PRD_Alta: { total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 },
+    total_geral: 0
+  };
+
+  detections.forEach(detection => {
+    const window = classifyWindow(detection);
+    if (!detectionWindows.includes(window)) return;
+
+    summary[window].total++;
+    summary.total_geral++;
+
+    const normalizedStatus = normalizeStatus(detection.status);
+    const isFixed = ['fixed', 'corrigida', 'corrigido'].includes(normalizedStatus);
+    if (isFixed) {
+      summary[window].corrigidas++;
+    } else {
+      summary[window].pendentes++;
+    }
+  });
+
+  detectionWindows.forEach(window => {
+    const windowData = summary[window];
+    if (windowData.total > 0) {
+      windowData.efetividade = Number((windowData.corrigidas / windowData.total).toFixed(2));
+    }
+  });
+
+  return summary;
+};
 
 // ROTAS DA API
 
@@ -601,6 +733,44 @@ app.get('/api/export/vulnerabilities/csv', auth, async (req, res) => {
       success: false,
       error: 'Erro ao exportar CSV',
       message: error.message
+    });
+  }
+});
+
+app.post('/efetividade/calcular', auth, async (req, res) => {
+  try {
+    const detectionIds = await readDetectionIdsFromCSV();
+
+    const detectionPromises = detectionIds.map(async (id) => {
+      try {
+        return await qualysAPI.getDetectionById(id);
+      } catch (error) {
+        console.warn(`Falha ao consultar Detection ID ${id}:`, error.message);
+        return null;
+      }
+    });
+
+    const detections = (await Promise.all(detectionPromises)).filter(Boolean);
+
+    if (detections.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Nenhum dado retornado pela API do Qualys para os Detection IDs fornecidos.'
+      });
+    }
+
+    const summary = buildEffectivenessSummary(detections);
+
+    return res.json({
+      success: true,
+      ...summary,
+      detections
+    });
+  } catch (error) {
+    console.error('Erro em /efetividade/calcular:', error.message);
+    res.status(400).json({
+      success: false,
+      error: error.message || 'Erro ao calcular efetividade'
     });
   }
 });
