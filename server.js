@@ -241,8 +241,12 @@ class QualysAPI {
       const detectionArray = Array.isArray(detections) ? detections : [detections];
       
       detectionArray.forEach(detection => {
+        const detectionId = detection.DETECTION_ID || detection.ID || '';
+        const uniqueVulnId = detection.UNIQUE_VULN_ID || detection.VULN_INFO?.UNIQUE_VULN_ID || '';
+
         vulnerabilities.push({
-          detectionId: detection.DETECTION_ID || detection.ID || '',
+          detectionId,
+          uniqueVulnId: uniqueVulnId || detectionId,
           hostIp: ip,
           hostDns: dns,
           hostTags: hostTags,
@@ -637,7 +641,7 @@ app.get('/api/export/vulnerabilities/excel', auth, async (req, res) => {
     const worksheet = workbook.addWorksheet('Vulnerabilidades');
     
     worksheet.columns = [
-      { header: 'Detection ID', key: 'detectionId', width: 15 },
+      { header: 'Detection ID', key: 'uniqueVulnId', width: 20 },
       { header: 'DNS', key: 'hostDns', width: 30 },
       { header: 'Host IP', key: 'hostIp', width: 15 },
       { header: 'Sistema Operacional', key: 'os', width: 25 },
@@ -703,7 +707,7 @@ app.get('/api/export/vulnerabilities/csv', auth, async (req, res) => {
     
     vulnerabilities.forEach(vuln => {
       const row = [
-        vuln.detectionId,
+        vuln.uniqueVulnId || vuln.detectionId,
         vuln.hostDns,
         vuln.hostIp,
         vuln.os || '',
