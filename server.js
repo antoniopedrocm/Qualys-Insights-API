@@ -129,7 +129,7 @@ class QualysAPI {
         },
         timeout: 120000
       });
-      return await this.parseVulnerabilityXML(response.data);
+      return await this.buildVulnerabilitiesFromXml(response.data);
     } catch (error) {
       console.error('Erro ao obter vulnerabilidades (Tentativa 1):', error.message);
       
@@ -143,10 +143,10 @@ class QualysAPI {
               status: 'New,Active,Re-Opened',
               output_format: 'XML',
               show_tags: '1'
-            },
-            timeout: 120000
-          });
-          return await this.parseVulnerabilityXML(response.data);
+          },
+          timeout: 120000
+        });
+          return await this.buildVulnerabilitiesFromXml(response.data);
         } catch (retryError) {
           console.error('Erro na segunda tentativa:', retryError.message);
           throw retryError;
@@ -154,6 +154,25 @@ class QualysAPI {
       }
       throw error;
     }
+  }
+
+  async buildVulnerabilitiesFromXml(xmlData) {
+    const parsedVulnerabilities = await this.parseVulnerabilityXML(xmlData);
+    const uniqueQids = new Set(parsedVulnerabilities.map(vuln => vuln.qid).filter(Boolean));
+    const kbDetails = await this.fetchKnowledgeBaseDetails(uniqueQids);
+
+    return parsedVulnerabilities.map(vuln => {
+      const kb = kbDetails[vuln.qid] || {};
+      const normalizedDetectionId = vuln.uniqueVulnId || vuln.detectionId || '';
+
+      return {
+        ...vuln,
+        detectionId: normalizedDetectionId,
+        uniqueVulnId: normalizedDetectionId,
+        title: vuln.title || kb.title || '',
+        solution: vuln.solution || kb.solution || ''
+      };
+    });
   }
 
   async getScanList() {
