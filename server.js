@@ -281,19 +281,20 @@ class QualysAPI {
   async parseVulnerabilityXML(xmlData) {
     const parser = new xml2js.Parser({ explicitArray: false });
     const result = await parser.parseStringPromise(xmlData);
-    
+
     const vulnerabilities = [];
     const hostList = result?.HOST_LIST_VM_DETECTION_OUTPUT?.RESPONSE?.HOST_LIST?.HOST;
-    
+
     if (!hostList) return vulnerabilities;
-    
+
     const hostArray = Array.isArray(hostList) ? hostList : [hostList];
-    
+
     hostArray.forEach(host => {
+      const hostId = host.ID || host.IP || '';
       const ip = host.IP || '';
       const dns = host.DNS || '';
       const os = host.OS || '';
-      
+
       let hostTags = '';
       if (host.TAGS) {
         const tagList = host.TAGS.TAG;
@@ -308,21 +309,23 @@ class QualysAPI {
       
       const detections = host.DETECTION_LIST?.DETECTION;
       if (!detections) return;
-      
+
       const detectionArray = Array.isArray(detections) ? detections : [detections];
-      
+
       detectionArray.forEach(detection => {
-        const detectionId = detection.DETECTION_ID || detection.ID || '';
-        const uniqueVulnId = detection.UNIQUE_VULN_ID || detection.VULN_INFO?.UNIQUE_VULN_ID || '';
+        const qid = detection.QID || '';
+        const composedId = `${hostId}-${qid}`;
+        const uniqueVulnId = detection.UNIQUE_VULN_ID || detection.VULN_INFO?.UNIQUE_VULN_ID || composedId;
 
         vulnerabilities.push({
-          detectionId,
-          uniqueVulnId: uniqueVulnId || detectionId,
+          detectionId: composedId,
+          uniqueVulnId,
+          hostId,
           hostIp: ip,
           hostDns: dns,
           hostTags: hostTags,
           os,
-          qid: detection.QID || '',
+          qid,
           type: detection.TYPE || '',
           severity: detection.SEVERITY || '',
           status: detection.STATUS || '',
