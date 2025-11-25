@@ -50,6 +50,8 @@ const cache = {
   ttl: 300000
 };
 
+const MAX_KB_CONCURRENCY = 5;
+
 const formatErrorMessage = (error) => {
   if (error.response) {
     const { status, statusText, data } = error.response;
@@ -207,6 +209,56 @@ class QualysAPI {
     return hosts;
   }
 
+  async parseHostDetectionXML(xmlData) {
+    const parser = new xml2js.Parser({ explicitArray: false });
+    const result = await parser.parseStringPromise(xmlData);
+
+    const detections = [];
+    const hostList = result?.HOST_LIST_VM_DETECTION_OUTPUT?.RESPONSE?.HOST_LIST?.HOST;
+    if (!hostList) return detections;
+
+    const hostArray = Array.isArray(hostList) ? hostList : [hostList];
+
+    hostArray.forEach(host => {
+      const ip = host.IP || '';
+      const dns = host.DNS || '';
+      const os = host.OS || '';
+
+      let hostTags = '';
+      if (host.TAGS) {
+        const tagList = host.TAGS.TAG;
+        if (tagList) {
+          const tagArray = Array.isArray(tagList) ? tagList : [tagList];
+          hostTags = tagArray.map(tag => {
+            const tagName = tag.NAME || tag;
+            return String(tagName).replace(/\s+/g, '_').replace(/\//g, '_');
+          }).join(', ');
+        }
+      }
+
+      const detectionList = host.DETECTION_LIST?.DETECTION;
+      if (!detectionList) return;
+
+      const detectionArray = Array.isArray(detectionList) ? detectionList : [detectionList];
+
+      detectionArray.forEach(detection => {
+        detections.push({
+          hostIp: ip,
+          hostDns: dns,
+          hostTags,
+          os,
+          qid: detection.QID || '',
+          severity: detection.SEVERITY || '',
+          status: detection.STATUS || '',
+          firstFound: detection.FIRST_FOUND_DATETIME || '',
+          lastFound: detection.LAST_FOUND_DATETIME || ''
+        });
+      });
+    });
+
+    return detections;
+  }
+
   async parseVulnerabilityXML(xmlData) {
     const parser = new xml2js.Parser({ explicitArray: false });
     const result = await parser.parseStringPromise(xmlData);
@@ -266,8 +318,68 @@ class QualysAPI {
         });
       });
     });
-    
+
     return vulnerabilities;
+  }
+
+  async parseKnowledgeBaseXML(xmlData) {
+    const parser = new xml2js.Parser({ explicitArray: false });
+    const result = await parser.parseStringPromise(xmlData);
+
+    const details = {};
+    const vulnList = result?.KNOWLEDGE_BASE_VULN_LIST_OUTPUT?.RESPONSE?.VULN_LIST?.VULN;
+    if (!vulnList) return details;
+
+    const vulnArray = Array.isArray(vulnList) ? vulnList : [vulnList];
+
+    vulnArray.forEach(vuln => {
+      const qid = vuln.QID || vuln.ID;
+      if (!qid) return;
+
+      const solutionValue = typeof vuln.SOLUTION === 'object' ? (vuln.SOLUTION.SOLUTION || vuln.SOLUTION) : vuln.SOLUTION;
+
+      details[qid] = {
+        title: vuln.TITLE || '',
+        solution: solutionValue || ''
+      };
+    });
+
+    return details;
+  }
+
+  async fetchKnowledgeBaseDetails(qids, concurrency = MAX_KB_CONCURRENCY) {
+    const qidArray = Array.from(qids);
+    const results = {};
+
+    for (let i = 0; i < qidArray.length; i += concurrency) {
+      const batch = qidArray.slice(i, i + concurrency);
+
+      const responses = await Promise.all(batch.map(async qid => {
+        try {
+          const response = await qualysClient.get('/api/2.0/fo/knowledge_base/vuln/', {
+            params: {
+              action: 'list',
+              ids: qid
+            },
+            timeout: 120000
+          });
+
+          const parsed = await this.parseKnowledgeBaseXML(response.data);
+          return { qid, details: parsed[qid] };
+        } catch (error) {
+          console.warn(`Falha ao consultar QID ${qid}:`, formatErrorMessage(error));
+          return { qid, details: null };
+        }
+      }));
+
+      responses.forEach(({ qid, details }) => {
+        if (details) {
+          results[qid] = details;
+        }
+      });
+    }
+
+    return results;
   }
 
   async parseScanXML(xmlData) {
@@ -311,6 +423,32 @@ class QualysAPI {
       return detections[0] || null;
     } catch (error) {
       console.error(`Erro ao obter detection ${detectionId}:`, error.message);
+      throw error;
+    }
+  }
+
+  async getHostDetectionsWithDetails(concurrency = MAX_KB_CONCURRENCY) {
+    try {
+      const response = await qualysClient.get('/api/2.0/fo/asset/host/vm/detection/', {
+        params: {
+          action: 'list',
+          truncation_limit: '0',
+          output_format: 'XML',
+          show_tags: '1'
+        },
+        timeout: 120000
+      });
+
+      const detections = await this.parseHostDetectionXML(response.data);
+      const uniqueQids = new Set(detections.map(detection => detection.qid).filter(Boolean));
+      const kbDetails = await this.fetchKnowledgeBaseDetails(uniqueQids, concurrency);
+
+      return detections.map(detection => ({
+        ...detection,
+        ...(kbDetails[detection.qid] || {})
+      }));
+    } catch (error) {
+      console.error('Erro ao obter detecções enriquecidas:', error.message);
       throw error;
     }
   }
@@ -394,6 +532,49 @@ const classifyWindow = (detection) => {
 };
 
 const normalizeStatus = (status = '') => status.trim().toLowerCase();
+
+const buildDetectionsCsv = (detections) => {
+  const headers = ['hostIp', 'hostDns', 'hostTags', 'os', 'qid', 'severity', 'status', 'firstFound', 'lastFound', 'title', 'solution'];
+
+  const escape = (value) => {
+    const stringValue = value === undefined || value === null ? '' : String(value);
+    if (/[",\n]/.test(stringValue)) {
+      return `"${stringValue.replace(/"/g, '""')}"`;
+    }
+    return stringValue;
+  };
+
+  const rows = detections.map(detection => headers.map(header => escape(detection[header])).join(','));
+  return [headers.join(','), ...rows].join('\n');
+};
+
+const buildDetectionsWorkbook = async (detections) => {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Detections');
+
+  worksheet.columns = [
+    { header: 'Host IP', key: 'hostIp', width: 15 },
+    { header: 'Host DNS', key: 'hostDns', width: 30 },
+    { header: 'Tags', key: 'hostTags', width: 30 },
+    { header: 'OS', key: 'os', width: 30 },
+    { header: 'QID', key: 'qid', width: 10 },
+    { header: 'Severity', key: 'severity', width: 10 },
+    { header: 'Status', key: 'status', width: 15 },
+    { header: 'First Found', key: 'firstFound', width: 22 },
+    { header: 'Last Found', key: 'lastFound', width: 22 },
+    { header: 'Title', key: 'title', width: 50 },
+    { header: 'Solution', key: 'solution', width: 80 }
+  ];
+
+  detections.forEach(detection => worksheet.addRow(detection));
+
+  worksheet.getRow(1).font = { bold: true };
+  worksheet.columns.forEach(column => {
+    column.alignment = { wrapText: true };
+  });
+
+  return workbook;
+};
 
 const buildEffectivenessSummary = (detections) => {
   const summary = {
@@ -737,6 +918,41 @@ app.get('/api/export/vulnerabilities/csv', auth, async (req, res) => {
       success: false,
       error: 'Erro ao exportar CSV',
       message: error.message
+    });
+  }
+});
+
+app.get('/api/detections/enriched', auth, async (req, res) => {
+  try {
+    const { format } = req.query;
+    const detections = await qualysAPI.getHostDetectionsWithDetails();
+
+    if (format === 'csv') {
+      const csvContent = buildDetectionsCsv(detections);
+      res.header('Content-Type', 'text/csv');
+      res.attachment('detections.csv');
+      return res.send(csvContent);
+    }
+
+    if (format === 'xlsx') {
+      const workbook = await buildDetectionsWorkbook(detections);
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.attachment('detections.xlsx');
+      await workbook.xlsx.write(res);
+      return res.end();
+    }
+
+    res.json({
+      success: true,
+      total: detections.length,
+      data: detections
+    });
+  } catch (error) {
+    console.error('Erro em /api/detections/enriched:', formatErrorMessage(error));
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao buscar detecções com detalhes',
+      message: formatErrorMessage(error)
     });
   }
 });
