@@ -327,17 +327,17 @@ function displayVulnerabilities(vulns) {
   document.getElementById('vulnCount').textContent = vulns.length;
   document.getElementById('vulnTableBody').innerHTML = vulns.map(v => `
     <tr>
-      <td>${v.hostIp || ''}</td>
+      <td>${v.detectionId || ''}</td>
       <td>${v.hostDns || ''}</td>
+      <td>${v.hostIp || ''}</td>
       <td>${v.os || ''}</td>
-      <td>${v.qid || ''}</td>
       <td>${v.title || ''}</td>
-      <td class="severity-${severityClass[v.severity]}">${severityLabel[v.severity] || v.severity}</td>
-      <td>${v.status || ''}</td>
-      <td>${v.port || ''}</td>
-      <td>${v.protocol || ''}</td>
       <td>${v.solution || ''}</td>
       <td>${v.results || ''}</td>
+      <td class="severity-${severityClass[v.severity]}">${severityLabel[v.severity] || v.severity}</td>
+      <td>${v.status || ''}</td>
+      <td>${v.qid || ''}</td>
+      <td>${v.port || ''}</td>
       <td>${v.firstFound ? v.firstFound.split('T')[0] : ''}</td>
     </tr>
   `).join('');
@@ -370,7 +370,7 @@ function applyFilters() {
   // Busca rápida
   if (quickSearch) {
     filtered = filtered.filter(v => {
-      const targets = [v.hostIp, v.hostDns, v.title, v.os, v.solution, v.status, v.protocol, v.port, v.qid];
+      const targets = [v.detectionId, v.hostIp, v.hostDns, v.title, v.os, v.solution, v.status, v.port, v.qid];
       const hasTextMatch = targets.some(value => value && String(value).toLowerCase().includes(quickSearch));
       const hasResultMatch = v.results && String(v.results).toUpperCase().includes(quickSearchUpper);
       return hasTextMatch || hasResultMatch;
@@ -416,24 +416,25 @@ async function exportFiltered() {
       showMessage('Nenhuma vulnerabilidade para exportar!', 'error');
       return;
     }
-    const headers = ['IP do Host', 'DNS do Host', 'Tags', 'QID', 'Severidade', 'Tipo', 'Status', 'Porta', 'Protocolo', 'Primeira Detecção', 'Última Detecção'];
+    const headers = ['Detection ID', 'DNS', 'Host IP', 'Sistema Operacional', 'Título', 'Solução', 'Resultados', 'Severidade', 'Status', 'QID', 'Porta', 'Primeira Detecção'];
     const severityLabel = { '5': 'Crítica', '4': 'Alta', '3': 'Média', '2': 'Baixa', '1': 'Info' };
     
     let csv = headers.join(',') + '\n';
     
     currentData.filteredVulnerabilities.forEach(vuln => {
       const row = [
-        vuln.hostIp,
+        vuln.detectionId,
         vuln.hostDns,
-        vuln.hostTags || '',
-        vuln.qid,
+        vuln.hostIp,
+        vuln.os || '',
+        vuln.title || '',
+        vuln.solution || '',
+        vuln.results || '',
         severityLabel[vuln.severity] || vuln.severity,
-        vuln.type,
         vuln.status,
+        vuln.qid,
         vuln.port,
-        vuln.protocol,
-        vuln.firstFound,
-        vuln.lastFound
+        vuln.firstFound
       ].map(field => `"${String(field || '').replace(/"/g, '""')}"`); // Escapa aspas
       
       csv += row.join(',') + '\n';

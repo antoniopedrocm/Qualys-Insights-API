@@ -241,6 +241,7 @@ class QualysAPI {
       
       detectionArray.forEach(detection => {
         vulnerabilities.push({
+          detectionId: detection.DETECTION_ID || detection.ID || '',
           hostIp: ip,
           hostDns: dns,
           hostTags: hostTags,
@@ -504,21 +505,18 @@ app.get('/api/export/vulnerabilities/excel', auth, async (req, res) => {
     const worksheet = workbook.addWorksheet('Vulnerabilidades');
     
     worksheet.columns = [
-      { header: 'IP do Host', key: 'hostIp', width: 15 },
-      { header: 'DNS do Host', key: 'hostDns', width: 30 },
-      { header: 'Tags', key: 'hostTags', width: 20 },
-      { header: 'QID', key: 'qid', width: 10 },
+      { header: 'Detection ID', key: 'detectionId', width: 15 },
+      { header: 'DNS', key: 'hostDns', width: 30 },
+      { header: 'Host IP', key: 'hostIp', width: 15 },
       { header: 'Sistema Operacional', key: 'os', width: 25 },
       { header: 'Titulo', key: 'title', width: 40 },
-      { header: 'Severidade', key: 'severity', width: 12 },
-      { header: 'Tipo', key: 'type', width: 15 },
       { header: 'Solucao', key: 'solution', width: 40 },
+      { header: 'Resultados', key: 'results', width: 50 },
+      { header: 'Severidade', key: 'severity', width: 12 },
       { header: 'Status', key: 'status', width: 12 },
+      { header: 'QID', key: 'qid', width: 10 },
       { header: 'Porta', key: 'port', width: 10 },
-      { header: 'Protocolo', key: 'protocol', width: 12 },
-      { header: 'Primeira Deteccao', key: 'firstFound', width: 20 },
-      { header: 'Ultima Deteccao', key: 'lastFound', width: 20 },
-      { header: 'Resultados', key: 'results', width: 50 }
+      { header: 'Primeira Deteccao', key: 'firstFound', width: 20 }
     ];
     
     worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -534,7 +532,7 @@ app.get('/api/export/vulnerabilities/excel', auth, async (req, res) => {
     
     worksheet.autoFilter = {
       from: 'A1',
-      to: 'O1'
+      to: 'L1'
     };
     
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -567,27 +565,24 @@ app.get('/api/export/vulnerabilities/csv', auth, async (req, res) => {
       });
     }
     
-    const headers = ['IP do Host', 'DNS do Host', 'Tags', 'QID', 'Sistema Operacional', 'Titulo', 'Severidade', 'Tipo', 'Solucao', 'Status', 'Porta', 'Protocolo', 'Primeira Deteccao', 'Ultima Deteccao', 'Resultados'];
+    const headers = ['Detection ID', 'DNS', 'Host IP', 'Sistema Operacional', 'Titulo', 'Solucao', 'Resultados', 'Severidade', 'Status', 'QID', 'Porta', 'Primeira Deteccao'];
     
     let csv = headers.join(',') + '\n';
     
     vulnerabilities.forEach(vuln => {
       const row = [
-        vuln.hostIp,
+        vuln.detectionId,
         vuln.hostDns,
-        vuln.hostTags || '',
-        vuln.qid,
+        vuln.hostIp,
         vuln.os || '',
         vuln.title || '',
-        vuln.severity,
-        vuln.type,
         vuln.solution || '',
+        vuln.results || '',
+        vuln.severity,
         vuln.status,
+        vuln.qid,
         vuln.port,
-        vuln.protocol,
-        vuln.firstFound,
-        vuln.lastFound,
-        vuln.results || ''
+        vuln.firstFound
       ].map(field => `"${field || ''}"`);
       
       csv += row.join(',') + '\n';
