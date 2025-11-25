@@ -132,82 +132,86 @@
         <div class="flex-1 overflow-y-auto p-6 space-y-6">
             
             <!-- Filters Section -->
-            <div class="bg-dark-800 rounded-xl p-6 border border-dark-700 shadow-xl">
-                <h3 class="text-white font-semibold mb-4">Filtros Avançados</h3>
-                
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <!-- Column 1: Severity -->
+            <div class="bg-gradient-to-br from-dark-800 via-dark-900 to-dark-800 rounded-xl p-6 border border-dark-700 shadow-xl space-y-6">
+                <div class="flex items-center justify-between gap-4 flex-wrap">
                     <div>
-                        <label class="block text-xs uppercase tracking-wider text-gray-500 mb-2">Severidade</label>
-                        <div class="flex flex-wrap gap-2">
+                        <p class="text-xs uppercase tracking-widest text-gray-500">Filtros Inteligentes</p>
+                        <h3 class="text-white font-semibold text-xl">Refine a análise em segundos</h3>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="refreshButton" class="hidden"></button>
+                        <button class="bg-dark-700 hover:bg-dark-600 text-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-dark-600">
+                            <i class="fas fa-lightbulb text-yellow-400"></i>
+                            Sugestões de Filtro
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-4 gap-6">
+                    <!-- Column 1: Severity -->
+                    <div class="xl:col-span-1">
+                        <label class="block text-xs uppercase tracking-wider text-gray-500 mb-3">Severidade</label>
+                        <div class="flex flex-wrap gap-2" id="severityFilters">
                             <label class="inline-flex items-center space-x-2 cursor-pointer bg-dark-900 px-3 py-1.5 rounded border border-red-500/30 hover:border-red-500 transition-colors">
-                                <input type="checkbox" checked class="form-checkbox text-red-600 rounded bg-dark-800 border-gray-600 focus:ring-0 focus:ring-offset-0 w-4 h-4">
+                                <input type="checkbox" data-filter="severity" data-level="5" checked class="form-checkbox text-red-600 rounded bg-dark-800 border-gray-600 focus:ring-0 focus:ring-offset-0 w-4 h-4">
                                 <span class="text-red-400 text-sm font-medium">Crítica</span>
                             </label>
                             <label class="inline-flex items-center space-x-2 cursor-pointer bg-dark-900 px-3 py-1.5 rounded border border-orange-500/30 hover:border-orange-500 transition-colors">
-                                <input type="checkbox" class="form-checkbox text-orange-500 rounded bg-dark-800 border-gray-600 focus:ring-0 focus:ring-offset-0 w-4 h-4">
+                                <input type="checkbox" data-filter="severity" data-level="4" checked class="form-checkbox text-orange-500 rounded bg-dark-800 border-gray-600 focus:ring-0 focus:ring-offset-0 w-4 h-4">
                                 <span class="text-orange-400 text-sm font-medium">Alta</span>
                             </label>
                             <label class="inline-flex items-center space-x-2 cursor-pointer bg-dark-900 px-3 py-1.5 rounded border border-yellow-500/30 hover:border-yellow-500 transition-colors">
-                                <input type="checkbox" class="form-checkbox text-yellow-500 rounded bg-dark-800 border-gray-600 focus:ring-0 focus:ring-offset-0 w-4 h-4">
+                                <input type="checkbox" data-filter="severity" data-level="3" checked class="form-checkbox text-yellow-500 rounded bg-dark-800 border-gray-600 focus:ring-0 focus:ring-offset-0 w-4 h-4">
                                 <span class="text-yellow-400 text-sm font-medium">Média</span>
                             </label>
                             <label class="inline-flex items-center space-x-2 cursor-pointer bg-dark-900 px-3 py-1.5 rounded border border-blue-500/30 hover:border-blue-500 transition-colors">
-                                <input type="checkbox" class="form-checkbox text-blue-500 rounded bg-dark-800 border-gray-600 focus:ring-0 focus:ring-offset-0 w-4 h-4">
+                                <input type="checkbox" data-filter="severity" data-level="2" checked class="form-checkbox text-blue-500 rounded bg-dark-800 border-gray-600 focus:ring-0 focus:ring-offset-0 w-4 h-4">
                                 <span class="text-blue-400 text-sm font-medium">Baixa</span>
                             </label>
-                            <label class="inline-flex items-center space-x-2 cursor-pointer bg-dark-900 px-3 py-1.5 rounded border border-gray-500/30 hover:border-gray-500 transition-colors">
-                                <input type="checkbox" class="form-checkbox text-gray-500 rounded bg-dark-800 border-gray-600 focus:ring-0 focus:ring-offset-0 w-4 h-4">
-                                <span class="text-gray-400 text-sm font-medium">Info</span>
-                            </label>
                         </div>
                     </div>
 
-                    <!-- Column 2: Host Search -->
-                    <div class="space-y-3">
-                        <label class="block text-xs uppercase tracking-wider text-gray-500">Busca por Host</label>
+                    <!-- Column 2-3: Quick search -->
+                    <div class="xl:col-span-2 space-y-3">
+                        <label class="block text-xs uppercase tracking-wider text-gray-500">Busca Rápida</label>
                         <div class="relative">
                             <i class="fas fa-search absolute left-3 top-2.5 text-gray-500"></i>
-                            <input type="text" placeholder="Buscar por IP (ex: 10.62...)" class="w-full bg-dark-900 border border-dark-700 rounded-lg py-2 pl-10 pr-4 text-sm text-gray-300 focus:outline-none focus:border-brand-blue focus:ring-1 focus:ring-brand-blue">
+                            <input id="quickSearch" type="text" placeholder="Busque por IP, DNS, título, sistema, QID, porta, protocolo..." class="w-full bg-dark-900 border border-dark-700 rounded-lg py-2 pl-10 pr-4 text-sm text-gray-300 focus:outline-none focus:border-brand-blue focus:ring-1 focus:ring-brand-blue shadow-inner shadow-black/20">
                         </div>
-                        <div class="relative">
-                            <i class="fas fa-search absolute left-3 top-2.5 text-gray-500"></i>
-                            <input type="text" placeholder="Buscar por DNS (ex: sap70...)" class="w-full bg-dark-900 border border-dark-700 rounded-lg py-2 pl-10 pr-4 text-sm text-gray-300 focus:outline-none focus:border-brand-blue focus:ring-1 focus:ring-brand-blue">
-                        </div>
+                        <p class="text-xs text-gray-500">A busca unifica IP, DNS, título, QID, sistema operacional, porta, protocolo, resultados e solução.</p>
                     </div>
 
-                    <!-- Column 3: Other Filters -->
-                    <div class="space-y-3">
-                        <label class="block text-xs uppercase tracking-wider text-gray-500">Outros Filtros</label>
-                        <div class="relative">
-                            <i class="fas fa-search absolute left-3 top-2.5 text-gray-500"></i>
-                            <input type="text" placeholder="Buscar por QID" class="w-full bg-dark-900 border border-dark-700 rounded-lg py-2 pl-10 pr-4 text-sm text-gray-300 focus:outline-none focus:border-brand-blue focus:ring-1 focus:ring-brand-blue">
+                    <!-- Column 4: Tags -->
+                    <div class="xl:col-span-1 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <label class="block text-xs uppercase tracking-wider text-gray-500">Tags</label>
+                            <span class="text-[10px] px-2 py-1 rounded-full bg-dark-700 text-gray-400 border border-dark-600">Uso combinado</span>
                         </div>
-                        <div class="relative">
-                            <input type="text" value="prod_alta" class="w-full bg-dark-900 border border-dark-700 rounded-lg py-2 pl-3 pr-4 text-sm text-gray-300 focus:outline-none focus:border-brand-blue">
-                        </div>
-                        <div class="relative">
-                            <i class="fas fa-lock absolute left-3 top-2.5 text-orange-500/70"></i>
-                            <input type="text" placeholder="Buscar por CVE (ex: CVE-2024)" class="w-full bg-dark-900 border border-dark-700 rounded-lg py-2 pl-10 pr-4 text-sm text-gray-300 focus:outline-none focus:border-brand-blue">
-                        </div>
+                        <div id="tagFilterList" class="flex flex-wrap gap-2"></div>
                     </div>
                 </div>
 
                 <!-- Filter Actions -->
-                <div class="mt-6 flex justify-between items-center border-t border-dark-700 pt-4">
-                    <button class="text-gray-500 hover:text-red-400 text-sm flex items-center gap-2 transition-colors">
-                        <i class="fas fa-trash-alt"></i> Limpar Filtros
-                    </button>
-                    <button class="bg-brand-blue hover:bg-brand-hover text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-blue-500/20">
-                        <i class="fas fa-file-export mr-2"></i> Exportar Filtrados (CSV)
-                    </button>
+                <div class="pt-2 flex flex-wrap justify-between items-center gap-3 border-t border-dark-700">
+                    <div class="flex items-center gap-3 text-xs text-gray-500">
+                        <span class="flex items-center gap-1"><i class="fas fa-filter text-brand-blue"></i> Filtros aplicados combinam entre si.</span>
+                        <span class="flex items-center gap-1 text-gray-400" id="activeFiltersLabel"></span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="clearFilters" class="text-gray-500 hover:text-red-400 text-sm flex items-center gap-2 transition-colors">
+                            <i class="fas fa-trash-alt"></i> Limpar Filtros
+                        </button>
+                        <button class="bg-brand-blue hover:bg-brand-hover text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-blue-500/20">
+                            <i class="fas fa-file-export mr-2"></i> Exportar Filtrados (CSV)
+                        </button>
+                    </div>
                 </div>
             </div>
 
             <!-- Table Section -->
             <div class="bg-dark-800 rounded-xl border border-dark-700 shadow-xl flex flex-col h-[600px]">
                 <div class="p-4 border-b border-dark-700 flex justify-between items-center bg-dark-800 rounded-t-xl sticky top-0 z-20">
-                    <h3 class="text-white font-semibold">Lista de Vulnerabilidades <span class="text-gray-500 text-sm font-normal ml-2">(444 de 7310)</span></h3>
+                    <h3 class="text-white font-semibold">Lista de Vulnerabilidades <span id="tableCount" class="text-gray-500 text-sm font-normal ml-2"></span></h3>
                 </div>
 
                 <div class="flex-1 overflow-auto w-full">
@@ -221,6 +225,7 @@
                                 <th class="p-4 font-semibold tracking-wider border-b border-dark-700 w-64 bg-blue-900/10 border-l border-r border-dark-700">Title</th> <!-- New -->
                                 <th class="p-4 font-semibold tracking-wider border-b border-dark-700 w-28">Severidade</th>
                                 <th class="p-4 font-semibold tracking-wider border-b border-dark-700 w-24">Status</th>
+                                <th class="p-4 font-semibold tracking-wider border-b border-dark-700 w-40">Tags</th>
                                 <th class="p-4 font-semibold tracking-wider border-b border-dark-700 w-20">Porta</th>
                                 <th class="p-4 font-semibold tracking-wider border-b border-dark-700 w-24">Protocolo</th>
                                 <th class="p-4 font-semibold tracking-wider border-b border-dark-700 w-64 bg-blue-900/10 border-l border-r border-dark-700">Solution</th> <!-- New -->
@@ -266,7 +271,8 @@
                 protocol: "TCP",
                 solution: "Disable SSH Protocol Version 1 in the configuration file (/etc/ssh/sshd_config) by setting 'Protocol 2'. Restart the service.",
                 results: "SSH-1.99-OpenSSH_7.4 detected. The server supports SSHv1 fallback.",
-                detected: "2024-01-15 08:30"
+                detected: "2024-01-15 08:30",
+                tags: ["prod", "linux", "ssh"]
             },
             {
                 ip: "10.62.100.18",
@@ -280,7 +286,8 @@
                 protocol: "TCP",
                 solution: "Disable TLSv1.0 in the web server or application configuration. Use TLS 1.2 or 1.3.",
                 results: "TLSv1.0 is enabled. Cipher suites detected: TLS_RSA_WITH_AES_128_CBC_SHA.",
-                detected: "2023-11-20 14:12"
+                detected: "2023-11-20 14:12",
+                tags: ["web", "crypto", "linux"]
             },
             {
                 ip: "192.168.50.4",
@@ -294,7 +301,8 @@
                 protocol: "TCP",
                 solution: "Disable SMBv1 via Registry or PowerShell: Set-SmbServerConfiguration -EnableSMB1Protocol $false.",
                 results: "SMBv1 is currently enabled on this host.",
-                detected: "2024-02-01 09:45"
+                detected: "2024-02-01 09:45",
+                tags: ["windows", "smb", "legacy"]
             },
             {
                 ip: "10.62.101.55",
@@ -308,7 +316,8 @@
                 protocol: "TCP",
                 solution: "Configure the web server to send X-Frame-Options, X-XSS-Protection, and Content-Security-Policy headers.",
                 results: "X-Frame-Options header missing. X-Content-Type-Options header missing.",
-                detected: "2023-12-05 11:20"
+                detected: "2023-12-05 11:20",
+                tags: ["web", "nginx", "hardening"]
             },
             {
                 ip: "10.62.100.22",
@@ -322,9 +331,10 @@
                 protocol: "TCP",
                 solution: "Upgrade Apache HTTP Server to version 2.4.46 or later.",
                 results: "Installed version: 2.4.6. Vulnerable to CVE-2020-11984, CVE-2020-11993.",
-                detected: "2024-02-10 16:00"
+                detected: "2024-02-10 16:00",
+                tags: ["apache", "linux", "mid-tier"]
             },
-             {
+            {
                 ip: "10.62.100.99",
                 dns: "legacy-app",
                 os: "Windows Server 2012 R2",
@@ -336,9 +346,17 @@
                 protocol: "TCP",
                 solution: "Upgrade to a supported version of Windows Server.",
                 results: "Operating System detected as Windows Server 2012 R2. End of Life reached.",
-                detected: "2023-10-10 09:00"
+                detected: "2023-10-10 09:00",
+                tags: ["windows", "eol", "crítico"]
             }
         ];
+
+        const severityLabels = {
+            5: 'Crítica',
+            4: 'Alta',
+            3: 'Média',
+            2: 'Baixa'
+        };
 
         function getSeverityBadge(level) {
             if (level >= 5) return `<span class="px-2 py-1 rounded bg-red-900/30 text-red-400 border border-red-900/50 text-xs font-bold">CRÍTICA</span>`;
@@ -358,39 +376,192 @@
         }
 
         const tbody = document.getElementById('vulnTableBody');
+        const quickSearchInput = document.getElementById('quickSearch');
+        const tagFilterList = document.getElementById('tagFilterList');
+        const severityCheckboxes = document.querySelectorAll('[data-filter="severity"]');
+        const tableCount = document.getElementById('tableCount');
+        const activeFiltersLabel = document.getElementById('activeFiltersLabel');
+        const clearFiltersButton = document.getElementById('clearFilters');
 
-        vulns.forEach(vuln => {
-            const row = document.createElement('tr');
-            row.className = "hover:bg-dark-800/50 transition-colors group";
-            
-            row.innerHTML = `
-                <td class="p-4 border-b border-dark-800 text-white font-mono text-xs">${vuln.ip}</td>
-                <td class="p-4 border-b border-dark-800 text-brand-blue">${vuln.dns}</td>
-                <td class="p-4 border-b border-dark-800 bg-blue-900/5 text-gray-400 text-xs">${vuln.os}</td>
-                <td class="p-4 border-b border-dark-800 font-mono text-xs text-yellow-500">${vuln.qid}</td>
-                <td class="p-4 border-b border-dark-800 bg-blue-900/5 text-white font-medium">
-                    <div class="table-cell-wrapper">
-                        <div class="cell-truncate text-sm cursor-help" title="${vuln.title}">${vuln.title}</div>
-                    </div>
-                </td>
-                <td class="p-4 border-b border-dark-800">${getSeverityBadge(vuln.severity)}</td>
-                <td class="p-4 border-b border-dark-800 text-xs">${getStatusIcon(vuln.status)}</td>
-                <td class="p-4 border-b border-dark-800 text-gray-400 text-xs">${vuln.port}</td>
-                <td class="p-4 border-b border-dark-800 text-gray-400 text-xs">${vuln.protocol}</td>
-                <td class="p-4 border-b border-dark-800 bg-blue-900/5 text-gray-400 text-xs">
-                    <div class="table-cell-wrapper">
-                         <div class="cell-truncate cursor-help">${vuln.solution}</div>
-                    </div>
-                </td>
-                <td class="p-4 border-b border-dark-800 bg-blue-900/5 text-gray-400 font-mono text-xs">
-                    <div class="table-cell-wrapper">
-                        <div class="cell-truncate cursor-help">${vuln.results}</div>
-                    </div>
-                </td>
-                <td class="p-4 border-b border-dark-800 text-gray-500 text-xs">${vuln.detected}</td>
-            `;
-            tbody.appendChild(row);
+        const totalCount = vulns.length;
+        const filterState = {
+            searchTerm: '',
+            severities: new Set([5, 4, 3, 2]),
+            tags: new Set()
+        };
+
+        const allTags = Array.from(new Set(vulns.flatMap(v => v.tags)));
+
+        function formatTags(tags) {
+            return tags.map(tag => `<span class="px-2 py-1 rounded-full bg-dark-900 border border-dark-700 text-xs text-gray-300">${tag}</span>`).join(' ');
+        }
+
+        function updateCountLabel(current) {
+            tableCount.textContent = current === totalCount ? `(${current} itens)` : `(${current} de ${totalCount})`;
+        }
+
+        function updateActiveFiltersLabel() {
+            const summaries = [];
+
+            if (filterState.searchTerm) {
+                summaries.push(`Busca: "${filterState.searchTerm}"`);
+            }
+
+            if (filterState.tags.size > 0) {
+                summaries.push(`Tags: ${Array.from(filterState.tags).join(', ')}`);
+            }
+
+            if (filterState.severities.size > 0 && filterState.severities.size < Object.keys(severityLabels).length) {
+                const labels = Array.from(filterState.severities).sort((a, b) => b - a).map(level => severityLabels[level]);
+                summaries.push(`Severidade: ${labels.join(', ')}`);
+            }
+
+            activeFiltersLabel.textContent = summaries.length ? summaries.join(' | ') : 'Sem filtros adicionais.';
+        }
+
+        function renderTable(data) {
+            tbody.innerHTML = '';
+
+            if (data.length === 0) {
+                const emptyRow = document.createElement('tr');
+                emptyRow.innerHTML = `<td colspan="13" class="p-6 text-center text-gray-500">Nenhum resultado para os filtros selecionados.</td>`;
+                tbody.appendChild(emptyRow);
+                updateCountLabel(0);
+                updateActiveFiltersLabel();
+                return;
+            }
+
+            data.forEach(vuln => {
+                const row = document.createElement('tr');
+                row.className = "hover:bg-dark-800/50 transition-colors group";
+
+                row.innerHTML = `
+                    <td class="p-4 border-b border-dark-800 text-white font-mono text-xs">${vuln.ip}</td>
+                    <td class="p-4 border-b border-dark-800 text-brand-blue">${vuln.dns}</td>
+                    <td class="p-4 border-b border-dark-800 bg-blue-900/5 text-gray-400 text-xs">${vuln.os}</td>
+                    <td class="p-4 border-b border-dark-800 font-mono text-xs text-yellow-500">${vuln.qid}</td>
+                    <td class="p-4 border-b border-dark-800 bg-blue-900/5 text-white font-medium">
+                        <div class="table-cell-wrapper">
+                            <div class="cell-truncate text-sm cursor-help" title="${vuln.title}">${vuln.title}</div>
+                        </div>
+                    </td>
+                    <td class="p-4 border-b border-dark-800">${getSeverityBadge(vuln.severity)}</td>
+                    <td class="p-4 border-b border-dark-800 text-xs">${getStatusIcon(vuln.status)}</td>
+                    <td class="p-4 border-b border-dark-800 text-xs text-gray-200">${formatTags(vuln.tags)}</td>
+                    <td class="p-4 border-b border-dark-800 text-gray-400 text-xs">${vuln.port}</td>
+                    <td class="p-4 border-b border-dark-800 text-gray-400 text-xs">${vuln.protocol}</td>
+                    <td class="p-4 border-b border-dark-800 bg-blue-900/5 text-gray-400 text-xs">
+                        <div class="table-cell-wrapper">
+                             <div class="cell-truncate cursor-help">${vuln.solution}</div>
+                        </div>
+                    </td>
+                    <td class="p-4 border-b border-dark-800 bg-blue-900/5 text-gray-400 font-mono text-xs">
+                        <div class="table-cell-wrapper">
+                            <div class="cell-truncate cursor-help">${vuln.results}</div>
+                        </div>
+                    </td>
+                    <td class="p-4 border-b border-dark-800 text-gray-500 text-xs">${vuln.detected}</td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            updateCountLabel(data.length);
+            updateActiveFiltersLabel();
+        }
+
+        function applyFilters() {
+            const query = filterState.searchTerm.trim().toLowerCase();
+
+            const filtered = vulns.filter(vuln => {
+                if (filterState.severities.size && !filterState.severities.has(vuln.severity)) {
+                    return false;
+                }
+
+                if (filterState.tags.size > 0 && !vuln.tags.some(tag => filterState.tags.has(tag))) {
+                    return false;
+                }
+
+                if (query) {
+                    const searchable = [
+                        vuln.ip,
+                        vuln.dns,
+                        vuln.title,
+                        vuln.os,
+                        vuln.qid,
+                        vuln.status,
+                        vuln.port,
+                        vuln.protocol,
+                        vuln.results,
+                        vuln.solution,
+                        vuln.tags.join(' ')
+                    ].join(' ').toLowerCase();
+
+                    if (!searchable.includes(query)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+
+            renderTable(filtered);
+        }
+
+        function renderTagFilters() {
+            tagFilterList.innerHTML = '';
+
+            allTags.forEach(tag => {
+                const button = document.createElement('button');
+                const isSelected = filterState.tags.has(tag);
+                button.type = 'button';
+                button.textContent = tag;
+                button.className = `px-3 py-1 rounded-full border text-xs transition-colors ${isSelected ? 'bg-brand-blue text-white border-brand-blue shadow-lg shadow-blue-500/30' : 'bg-dark-900 border-dark-700 text-gray-300 hover:border-brand-blue/60'}`;
+
+                button.addEventListener('click', () => {
+                    if (filterState.tags.has(tag)) {
+                        filterState.tags.delete(tag);
+                    } else {
+                        filterState.tags.add(tag);
+                    }
+                    renderTagFilters();
+                    applyFilters();
+                });
+
+                tagFilterList.appendChild(button);
+            });
+        }
+
+        quickSearchInput.addEventListener('input', event => {
+            filterState.searchTerm = event.target.value;
+            applyFilters();
         });
+
+        severityCheckboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', event => {
+                const level = Number(event.target.dataset.level);
+                if (event.target.checked) {
+                    filterState.severities.add(level);
+                } else {
+                    filterState.severities.delete(level);
+                }
+                applyFilters();
+            });
+        });
+
+        clearFiltersButton.addEventListener('click', () => {
+            filterState.searchTerm = '';
+            filterState.tags.clear();
+            filterState.severities = new Set([5, 4, 3, 2]);
+
+            quickSearchInput.value = '';
+            severityCheckboxes.forEach(box => box.checked = true);
+            renderTagFilters();
+            applyFilters();
+        });
+
+        // Initial render
+        renderTagFilters();
+        applyFilters();
     </script>
 </body>
 </html>
