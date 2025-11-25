@@ -5,7 +5,8 @@ let currentData = {
   availableTags: [],
   hosts: [],
   filteredHosts: [],
-  scans: []
+  scans: [],
+  effectiveness: null
 };
 
 // Configurações globais do Chart.js para o tema escuro
@@ -39,6 +40,9 @@ function showTab(tabName) {
     refreshButton.style.display = 'block';
     refreshButton.onclick = loadVulnerabilities;
     if (currentData.vulnerabilities.length === 0) loadVulnerabilities(); // Carrega se vazio
+  } else if (tabName === 'efetividade') {
+    pageTitle.textContent = 'Efetividade';
+    refreshButton.style.display = 'none';
   } else if (tabName === 'hosts') {
     pageTitle.textContent = 'Inventário de Hosts';
     refreshButton.style.display = 'block';
@@ -300,6 +304,132 @@ function updateCharts(summary, trends) {
       }
     }
   });
+}
+
+function classifyWindowFront(severity) {
+  const sev = Number(severity) || 0;
+  if (sev >= 4) return 'PRD_Alta';
+  if (sev === 3) return 'PRD_Baixa';
+  return 'DEV_QA';
+}
+
+function buildStackedChart(chartKey, canvasId, label, data) {
+  if (charts[chartKey]) charts[chartKey].destroy();
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  charts[chartKey] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: [label],
+      datasets: [
+        {
+          label: 'Corrigidas',
+          data: [data.corrigidas],
+          backgroundColor: '#2ecc71',
+          stack: 'stack'
+        },
+        {
+          label: 'Pendentes',
+          data: [data.pendentes],
+          backgroundColor: '#f1c40f',
+          stack: 'stack'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      scales: {
+        x: { stacked: true, grid: { display: false } },
+        y: { stacked: true, beginAtZero: true, grid: { color: '#1a223a' } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        title: {
+          display: true,
+          text: `Total: ${data.total}`,
+          color: '#f0f4f8'
+        }
+      }
+    }
+  });
+}
+
+function populateEffectivenessTable(detections) {
+  const tbody = document.getElementById('efetividadeTableBody');
+  const severityLabel = { '5': 'Crítica', '4': 'Alta', '3': 'Média', '2': 'Baixa', '1': 'Info' };
+  tbody.innerHTML = detections.map(det => {
+    const windowName = classifyWindowFront(det.severity);
+    return `
+      <tr>
+        <td>${det.detectionId || '-'}</td>
+        <td>${det.status || '-'}</td>
+        <td>${severityLabel[det.severity] || det.severity || '-'}</td>
+        <td>${det.qid || '-'}</td>
+        <td>${det.host || '-'}</td>
+        <td>${det.lastFound ? det.lastFound.split('T')[0] : '-'}</td>
+        <td>${windowName}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderEffectiveness(data) {
+  currentData.effectiveness = data;
+
+  const summary = {
+    DEV_QA: data.DEV_QA || { total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 },
+    PRD_Baixa: data.PRD_Baixa || { total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 },
+    PRD_Alta: data.PRD_Alta || { total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 }
+  };
+
+  document.getElementById('efetividadeKpis').style.display = 'grid';
+  document.getElementById('efetividadeCharts').style.display = 'grid';
+  document.getElementById('efetividadeTableWrapper').style.display = data.detections?.length ? 'block' : 'none';
+  document.getElementById('efetividadeTotalLabel').style.display = 'block';
+
+  document.getElementById('efetividadeTotal').textContent = data.total_geral || 0;
+  document.getElementById('efetividadeTotalInline').textContent = data.total_geral || 0;
+  document.getElementById('efetividadeDevQa').textContent = `${summary.DEV_QA.efetividade || 0}`;
+  document.getElementById('efetividadePrdAlta').textContent = `${summary.PRD_Alta.efetividade || 0}`;
+  document.getElementById('efetividadePrdBaixa').textContent = `${summary.PRD_Baixa.efetividade || 0}`;
+
+  buildStackedChart('devQaEfetividade', 'devQaEfetividadeChart', 'DEV_QA', summary.DEV_QA);
+  buildStackedChart('prdBaixaEfetividade', 'prdBaixaEfetividadeChart', 'PRD_Baixa', summary.PRD_Baixa);
+  buildStackedChart('prdAltaEfetividade', 'prdAltaEfetividadeChart', 'PRD_Alta', summary.PRD_Alta);
+
+  if (data.detections) {
+    populateEffectivenessTable(data.detections);
+  }
+}
+
+async function calculateEffectiveness() {
+  try {
+    showLoading(true);
+    const response = await fetch('/efetividade/calcular', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Basic ' + btoa('admin:admin123')
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || 'Erro ao calcular efetividade');
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || 'Erro ao calcular efetividade');
+    }
+
+    renderEffectiveness(data);
+    showMessage('Efetividade calculada com sucesso!', 'success');
+  } catch (error) {
+    showMessage(error.message || 'Erro ao calcular efetividade', 'error');
+  } finally {
+    showLoading(false);
+  }
 }
 
 async function loadVulnerabilities() {

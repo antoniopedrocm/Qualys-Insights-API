@@ -18,6 +18,7 @@
       <ul class="nav-tabs">
         <li><button class="tab-btn active" onclick="showTab('dashboard')">📊 Dashboard Executivo</button></li>
         <li><button class="tab-btn" onclick="showTab('vulnerabilities')">🔴 Análise de Vulnerabilidades</button></li>
+        <li><button class="tab-btn" onclick="showTab('efetividade')">📈 Efetividade</button></li>
         <li><button class="tab-btn" onclick="showTab('hosts')">💻 Inventário de Hosts</button></li>
         <li><button class="tab-btn" onclick="showTab('scans')">🔍 Status dos Scans</button></li>
         <li><button class="tab-btn" onclick="showTab('api')">⚙️ API Explorer</button></li>
@@ -204,6 +205,90 @@
                 </tr>
               </thead>
               <tbody id="vulnTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ====================== -->
+      <!-- TAB: EFETIVIDADE       -->
+      <!-- ====================== -->
+      <div id="efetividade" class="tab-content">
+        <div class="section-header">
+          <div>
+            <p class="eyebrow">Nova Análise</p>
+            <h2>Efetividade das Correções</h2>
+            <p class="filter-subtitle">Processa o arquivo detection_ids.csv da raiz e consulta a API Qualys em tempo real.</p>
+          </div>
+          <div class="header-actions">
+            <button class="btn" onclick="calculateEffectiveness()">🚀 Calcular Efetividade</button>
+          </div>
+        </div>
+
+        <div class="total-label" id="efetividadeTotalLabel" style="display: none;">
+          Total de vulnerabilidades analisadas: <span id="efetividadeTotalInline">0</span>
+        </div>
+
+        <div class="kpi-grid" id="efetividadeKpis" style="display: none;">
+          <div class="stat-card">
+            <h3>Total Geral</h3>
+            <div class="value" id="efetividadeTotal">-</div>
+            <p class="small">Total de vulnerabilidades analisadas</p>
+          </div>
+          <div class="stat-card sev-high">
+            <h3>DEV/QA</h3>
+            <div class="value" id="efetividadeDevQa">-</div>
+            <p class="small">Efetividade em DEV/QA</p>
+          </div>
+          <div class="stat-card sev-critical">
+            <h3>Produção Alta</h3>
+            <div class="value" id="efetividadePrdAlta">-</div>
+            <p class="small">Efetividade em ambientes críticos</p>
+          </div>
+          <div class="stat-card sev-medium">
+            <h3>Produção Baixa</h3>
+            <div class="value" id="efetividadePrdBaixa">-</div>
+            <p class="small">Efetividade em ambientes de menor risco</p>
+          </div>
+        </div>
+
+        <div class="charts-grid-col-3" id="efetividadeCharts" style="display: none;">
+          <div class="chart-container">
+            <h2>DEV_QA</h2>
+            <canvas id="devQaEfetividadeChart"></canvas>
+          </div>
+          <div class="chart-container">
+            <h2>PRD_Baixa</h2>
+            <canvas id="prdBaixaEfetividadeChart"></canvas>
+          </div>
+          <div class="chart-container">
+            <h2>PRD_Alta</h2>
+            <canvas id="prdAltaEfetividadeChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-container" id="efetividadeTableWrapper" style="display: none;">
+          <div class="table-header">
+            <div>
+              <p class="eyebrow">Detalhamento</p>
+              <h2>Detection IDs processados</h2>
+              <p class="filter-subtitle">Lista em memória com status atual consultado na API do Qualys.</p>
+            </div>
+          </div>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Detection ID</th>
+                  <th>Status</th>
+                  <th>Severidade</th>
+                  <th>QID</th>
+                  <th>Host</th>
+                  <th>Última Detecção</th>
+                  <th>Janela</th>
+                </tr>
+              </thead>
+              <tbody id="efetividadeTableBody"></tbody>
             </table>
           </div>
         </div>
