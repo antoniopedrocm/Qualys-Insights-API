@@ -114,64 +114,92 @@
       <!-- TAB: VULNERABILIDADES  -->
       <!-- ====================== -->
       <div id="vulnerabilities" class="tab-content">
-        <div class="filter-section">
-          <h3>Filtros Avançados</h3>
-          <div class="filter-grid">
-            <!-- Filtro de Severidade -->
-            <div class="filter-group">
-              <label>Severidade:</label>
-              <div class="checkbox-group">
-                <label><input type="checkbox" class="severity-filter" value="5" checked onchange="applyFilters()"><span class="sev-5">Crítica</span></label>
-                <label><input type="checkbox" class="severity-filter" value="4" checked onchange="applyFilters()"><span class="sev-4">Alta</span></label>
-                <label><input type="checkbox" class="severity-filter" value="3" checked onchange="applyFilters()"><span class="sev-3">Média</span></label>
-                <label><input type="checkbox" class="severity-filter" value="2" checked onchange="applyFilters()"><span class="sev-2">Baixa</span></label>
-                <label><input type="checkbox" class="severity-filter" value="1" checked onchange="applyFilters()"><span class="sev-1">Info</span></label>
-              </div>
+        <div class="filter-section modern">
+          <div class="filter-header">
+            <div>
+              <p class="eyebrow">Segurança</p>
+              <h3>Filtros de Segurança</h3>
+              <p class="filter-subtitle">Combine severidade, busca rápida e tags para refinar a lista.</p>
             </div>
-            <!-- Filtros de Busca -->
-            <div class="filter-group">
-              <label>Busca por Host:</label>
-              <input type="text" id="filterIp" placeholder="🔍 Buscar por IP (ex: 10.62)" onkeyup="applyFilters()">
-              <input type="text" id="filterDns" placeholder="🔍 Buscar por DNS (ex: sap70)" onkeyup="applyFilters()">
-            </div>
-            <!-- Outros Filtros -->
-            <div class="filter-group">
-              <label>Outros Filtros:</label>
-              <input type="text" id="filterQid" placeholder="🔍 Buscar por QID" onkeyup="applyFilters()">
-              <input type="text" id="filterTags" placeholder="🏷️ Buscar por Tags (ex: PRD_Alta)" onkeyup="applyFilters()">
-              <input type="text" id="filterCve" placeholder="🔐 Buscar por CVE (ex: CVE-2024)" onkeyup="applyFilters()">
-              <select id="filterStatus" onchange="applyFilters()">
-                <option value="">📊 Todos os Status</option>
-                <option value="New">Novo</option>
-                <option value="Active">Ativo</option>
-                <option value="Re-Opened">Reaberto</option>
-                <option value="Fixed">Corrigido</option>
-              </select>
+            <div class="filter-actions">
+              <button class="btn btn-secondary" onclick="clearFilters()">🗑️ Limpar</button>
+              <button class="btn" onclick="exportFiltered()">📥 Exportar CSV</button>
             </div>
           </div>
-          <div class="filter-actions">
-            <button class="btn btn-secondary" onclick="clearFilters()">🗑️ Limpar Filtros</button>
-            <button class="btn" onclick="exportFiltered()">📥 Exportar Filtrados (CSV)</button>
+
+          <div class="filter-grid enhanced">
+            <div class="filter-card severity-card">
+              <div class="filter-card-title">Severidade</div>
+              <div class="checkbox-group pill-group">
+                <label class="pill critical"><input type="checkbox" class="severity-filter" value="5" checked onchange="applyFilters()"><span>Crítica</span></label>
+                <label class="pill high"><input type="checkbox" class="severity-filter" value="4" checked onchange="applyFilters()"><span>Alta</span></label>
+                <label class="pill medium"><input type="checkbox" class="severity-filter" value="3" checked onchange="applyFilters()"><span>Média</span></label>
+                <label class="pill low"><input type="checkbox" class="severity-filter" value="2" checked onchange="applyFilters()"><span>Baixa</span></label>
+                <label class="pill info"><input type="checkbox" class="severity-filter" value="1" checked onchange="applyFilters()"><span>Info</span></label>
+              </div>
+            </div>
+
+            <div class="filter-card">
+              <div class="filter-card-title">Busca Rápida</div>
+              <p class="filter-hint">Busque por IP, DNS, título, QID, CVE ou solução.</p>
+              <div class="input-with-icon">
+                <span>🔎</span>
+                <input type="text" id="quickSearch" placeholder="Digite para filtrar" oninput="applyFilters()">
+              </div>
+            </div>
+
+            <div class="filter-card">
+              <div class="filter-card-title">Tags do Host</div>
+              <p class="filter-hint">Selecione uma tag cadastrada para filtrar os resultados.</p>
+              <select id="tagFilter" onchange="applyFilters()">
+                <option value="">Todas as Tags</option>
+              </select>
+            </div>
+
+            <div class="filter-card">
+              <div class="filter-card-title">Status e QID</div>
+              <div class="dual-inputs">
+                <div class="input-with-icon compact">
+                  <span>🆔</span>
+                  <input type="text" id="filterQid" placeholder="Buscar por QID" oninput="applyFilters()">
+                </div>
+                <div class="input-with-icon compact">
+                  <span>📊</span>
+                  <select id="filterStatus" onchange="applyFilters()">
+                    <option value="">Todos os Status</option>
+                    <option value="New">Novo</option>
+                    <option value="Active">Ativo</option>
+                    <option value="Re-Opened">Reaberto</option>
+                    <option value="Fixed">Corrigido</option>
+                  </select>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
         <div class="chart-container">
-          <h2>Lista de Vulnerabilidades (<span id="vulnCount">0</span> de <span id="vulnTotal">0</span>)</h2>
+          <div class="table-header">
+            <div>
+              <p class="eyebrow">Lista</p>
+              <h2>Vulnerabilidades (<span id="vulnCount">0</span> de <span id="vulnTotal">0</span>)</h2>
+            </div>
+          </div>
           <div class="table-container">
             <table>
               <thead>
                 <tr>
-                  <th>DNS</th>
                   <th>Host IP</th>
+                  <th>DNS</th>
                   <th>Sistema Operacional</th>
-                  <th>Título</th>			
-                  <th>Solução</th>
-                  <th>Resultados</th>
-                  <th>Severidade</th>	
-                  <th>Status</th>				  
                   <th>QID</th>
+                  <th>Título</th>
+                  <th>Severidade</th>
+                  <th>Status</th>
                   <th>Porta</th>
                   <th>Protocolo</th>
+                  <th>Solução</th>
+                  <th>Resultados</th>
                   <th>Primeira Detecção</th>
                 </tr>
               </thead>

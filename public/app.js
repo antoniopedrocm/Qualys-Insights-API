@@ -2,6 +2,7 @@ let charts = {};
 let currentData = {
   vulnerabilities: [],
   filteredVulnerabilities: [],
+  availableTags: [],
   hosts: [],
   filteredHosts: [],
   scans: []
@@ -69,6 +70,29 @@ function showMessage(message, type = 'error') {
 
 function showLoading(show) {
   document.getElementById('loadingIndicator').style.display = show ? 'block' : 'none';
+}
+
+function parseTags(tagString) {
+  if (!tagString) return [];
+  return tagString
+    .split(/[,;|]/)
+    .map(tag => tag.trim())
+    .filter(Boolean);
+}
+
+function extractTagsFromVulns(vulnerabilities) {
+  const tagSet = new Set();
+  vulnerabilities.forEach(v => {
+    parseTags(v.hostTags).forEach(tag => tagSet.add(tag));
+  });
+  return Array.from(tagSet).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+}
+
+function populateTagFilter(tags) {
+  const select = document.getElementById('tagFilter');
+  if (!select) return;
+  select.innerHTML = '<option value="">Todas as Tags</option>' +
+    tags.map(tag => `<option value="${tag}">${tag}</option>`).join('');
 }
 
 async function apiCall(endpoint, needsAuth = true) {
@@ -284,6 +308,8 @@ async function loadVulnerabilities() {
     const data = await apiCall('/api/vulnerabilities');
     currentData.vulnerabilities = data.data || [];
     currentData.filteredVulnerabilities = data.data || [];
+    currentData.availableTags = extractTagsFromVulns(currentData.vulnerabilities);
+    populateTagFilter(currentData.availableTags);
     displayVulnerabilities(currentData.vulnerabilities);
     document.getElementById('vulnTotal').textContent = currentData.vulnerabilities.length;
     showLoading(false);
@@ -297,7 +323,7 @@ async function loadVulnerabilities() {
 function displayVulnerabilities(vulns) {
   const severityLabel = { '5': 'Crítica', '4': 'Alta', '3': 'Média', '2': 'Baixa', '1': 'Info' };
   const severityClass = { '5': 'critical', '4': 'high', '3': 'medium', '2': 'low', '1': 'low' };
-  
+
   document.getElementById('vulnCount').textContent = vulns.length;
   document.getElementById('vulnTableBody').innerHTML = vulns.map(v => `
     <tr>
@@ -310,9 +336,9 @@ function displayVulnerabilities(vulns) {
       <td>${v.status || ''}</td>
       <td>${v.port || ''}</td>
       <td>${v.protocol || ''}</td>
-      <td>${v.firstFound ? v.firstFound.split('T')[0] : ''}</td>
       <td>${v.solution || ''}</td>
       <td>${v.results || ''}</td>
+      <td>${v.firstFound ? v.firstFound.split('T')[0] : ''}</td>
     </tr>
   `).join('');
 }
@@ -320,17 +346,16 @@ function displayVulnerabilities(vulns) {
 function applyFilters() {
   const selectedSeverities = Array.from(document.querySelectorAll('.severity-filter:checked'))
     .map(cb => cb.value);
-  
-  const ip = document.getElementById('filterIp').value.toLowerCase().trim();
-  const dns = document.getElementById('filterDns').value.toLowerCase().trim();
+
+  const quickSearch = document.getElementById('quickSearch').value.toLowerCase().trim();
+  const quickSearchUpper = quickSearch.toUpperCase();
   const qid = document.getElementById('filterQid').value.trim();
-  const tags = document.getElementById('filterTags').value.toLowerCase().trim();
-  const cve = document.getElementById('filterCve').value.toUpperCase().trim();
+  const selectedTag = document.getElementById('tagFilter').value;
   const status = document.getElementById('filterStatus').value;
 
   let filtered = currentData.vulnerabilities;
 
-  const hasActiveFilters = selectedSeverities.length < 5 || ip || dns || qid || tags || cve || status;
+  const hasActiveFilters = selectedSeverities.length < 5 || quickSearch || qid || selectedTag || status;
 
   if (!hasActiveFilters) {
     currentData.filteredVulnerabilities = filtered;
@@ -340,27 +365,24 @@ function applyFilters() {
 
   // Filtro de severidade
   if (selectedSeverities.length > 0 && selectedSeverities.length < 5) {
-    filtered = filtered.filter(v => selectedSeverities.includes(v.severity));
+    filtered = filtered.filter(v => selectedSeverities.includes(String(v.severity)));
   }
-  // Filtro de IP
-  if (ip) {
-    filtered = filtered.filter(v => v.hostIp && v.hostIp.toLowerCase().includes(ip));
-  }
-  // Filtro de DNS
-  if (dns) {
-    filtered = filtered.filter(v => v.hostDns && v.hostDns.toLowerCase().includes(dns));
+  // Busca rápida
+  if (quickSearch) {
+    filtered = filtered.filter(v => {
+      const targets = [v.hostIp, v.hostDns, v.title, v.os, v.solution, v.status, v.protocol, v.port, v.qid];
+      const hasTextMatch = targets.some(value => value && String(value).toLowerCase().includes(quickSearch));
+      const hasResultMatch = v.results && String(v.results).toUpperCase().includes(quickSearchUpper);
+      return hasTextMatch || hasResultMatch;
+    });
   }
   // Filtro de QID
   if (qid) {
-    filtered = filtered.filter(v => v.qid === qid);
+    filtered = filtered.filter(v => String(v.qid || '').includes(qid));
   }
-  // Filtro de Tags
-  if (tags) {
-    filtered = filtered.filter(v => v.hostTags && v.hostTags.toLowerCase().includes(tags));
-  }
-  // Filtro de CVE
-  if (cve) {
-    filtered = filtered.filter(v => v.results && v.results.toUpperCase().includes(cve));
+  // Filtro de Tags cadastradas
+  if (selectedTag) {
+    filtered = filtered.filter(v => parseTags(v.hostTags).some(tag => tag.toLowerCase() === selectedTag.toLowerCase()));
   }
   // Filtro de Status
   if (status) {
@@ -377,11 +399,9 @@ function applyFilters() {
 
 function clearFilters() {
   document.querySelectorAll('.severity-filter').forEach(cb => cb.checked = true);
-  document.getElementById('filterIp').value = '';
-  document.getElementById('filterDns').value = '';
+  document.getElementById('quickSearch').value = '';
   document.getElementById('filterQid').value = '';
-  document.getElementById('filterTags').value = '';
-  document.getElementById('filterCve').value = '';
+  document.getElementById('tagFilter').value = '';
   document.getElementById('filterStatus').value = '';
 
   currentData.filteredVulnerabilities = currentData.vulnerabilities;
