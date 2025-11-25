@@ -1,0 +1,152 @@
+diff a/public/index.html b/public/index.html	(rejected hunks)
+@@ -92,108 +92,121 @@
+           </div>
+           
+           <div class="chart-container">
+             <h2>⚠️ Produção Baixa</h2>
+             <canvas id="prdBaixaChart"></canvas>
+           </div>
+           
+           <div class="chart-container">
+             <h2>🔴 Produção Alta</h2>
+             <canvas id="prdAltaChart"></canvas>
+           </div>
+         </div>
+         
+         <div class="chart-container">
+           <h2>Top 10 Vulnerabilidades (QIDs)</h2>
+           <div class="chart-wrapper-large">
+             <canvas id="topVulnsChart"></canvas>
+           </div>
+         </div>
+       </div>
+ 
+       <!-- ====================== -->
+       <!-- TAB: VULNERABILIDADES  -->
+       <!-- ====================== -->
+       <div id="vulnerabilities" class="tab-content">
+-        <div class="filter-section">
+-          <h3>Filtros Avançados</h3>
+-          <div class="filter-grid">
+-            <!-- Filtro de Severidade -->
++        <div class="filter-section modern-filters">
++          <div class="filters-row">
+             <div class="filter-group">
+-              <label>Severidade:</label>
+-              <div class="checkbox-group">
+-                <label><input type="checkbox" class="severity-filter" value="5" checked onchange="applyFilters()"><span class="sev-5">Crítica</span></label>
+-                <label><input type="checkbox" class="severity-filter" value="4" checked onchange="applyFilters()"><span class="sev-4">Alta</span></label>
+-                <label><input type="checkbox" class="severity-filter" value="3" checked onchange="applyFilters()"><span class="sev-3">Média</span></label>
+-                <label><input type="checkbox" class="severity-filter" value="2" checked onchange="applyFilters()"><span class="sev-2">Baixa</span></label>
+-                <label><input type="checkbox" class="severity-filter" value="1" checked onchange="applyFilters()"><span class="sev-1">Info</span></label>
++              <div class="filter-label">Filtrar por Severidade</div>
++              <div class="checkbox-group pill-group">
++                <label class="pill"><input type="checkbox" class="severity-filter" value="5" checked onchange="applyFilters()"><span class="sev-5">Crítica</span></label>
++                <label class="pill"><input type="checkbox" class="severity-filter" value="4" checked onchange="applyFilters()"><span class="sev-4">Alta</span></label>
++                <label class="pill"><input type="checkbox" class="severity-filter" value="3" checked onchange="applyFilters()"><span class="sev-3">Média</span></label>
++                <label class="pill"><input type="checkbox" class="severity-filter" value="2" checked onchange="applyFilters()"><span class="sev-2">Baixa</span></label>
++                <label class="pill"><input type="checkbox" class="severity-filter" value="1" checked onchange="applyFilters()"><span class="sev-1">Info</span></label>
++              </div>
++            </div>
++            <div class="filter-group quick-search-card">
++              <div class="filter-label">Busca Rápida</div>
++              <div class="input-icon">
++                <span>🔍</span>
++                <input type="text" id="filterSearch" placeholder="Buscar por IP, DNS, Título, QID, Solução..." onkeyup="applyFilters()">
+               </div>
++              <small>Digite qualquer termo para encontrar registros por IP, DNS, título, QID ou solução.</small>
+             </div>
+-            <!-- Filtros de Busca -->
++          </div>
++
++          <div class="filters-row compact">
+             <div class="filter-group">
+-              <label>Busca por Host:</label>
+-              <input type="text" id="filterIp" placeholder="🔍 Buscar por IP (ex: 10.62)" onkeyup="applyFilters()">
+-              <input type="text" id="filterDns" placeholder="🔍 Buscar por DNS (ex: sap70)" onkeyup="applyFilters()">
++              <label for="filterTagSelect" class="filter-label">Tags cadastradas</label>
++              <select id="filterTagSelect" onchange="applyFilters()">
++                <option value="">Todas as tags</option>
++              </select>
+             </div>
+-            <!-- Outros Filtros -->
+             <div class="filter-group">
+-              <label>Outros Filtros:</label>
+-              <input type="text" id="filterQid" placeholder="🔍 Buscar por QID" onkeyup="applyFilters()">
+-              <input type="text" id="filterTags" placeholder="🏷️ Buscar por Tags (ex: PRD_Alta)" onkeyup="applyFilters()">
+-              <input type="text" id="filterCve" placeholder="🔐 Buscar por CVE (ex: CVE-2024)" onkeyup="applyFilters()">
++              <label class="filter-label" for="filterStatus">Status</label>
+               <select id="filterStatus" onchange="applyFilters()">
+-                <option value="">📊 Todos os Status</option>
++                <option value="">Todos os Status</option>
+                 <option value="New">Novo</option>
+                 <option value="Active">Ativo</option>
+                 <option value="Re-Opened">Reaberto</option>
+                 <option value="Fixed">Corrigido</option>
+               </select>
+             </div>
++            <div class="filter-group">
++              <label class="filter-label" for="filterCve">Filtro por CVE</label>
++              <input type="text" id="filterCve" placeholder="Ex: CVE-2024" onkeyup="applyFilters()">
++            </div>
+           </div>
++
+           <div class="filter-actions">
+-            <button class="btn btn-secondary" onclick="clearFilters()">🗑️ Limpar Filtros</button>
+-            <button class="btn" onclick="exportFiltered()">📥 Exportar Filtrados (CSV)</button>
++            <div class="filter-tips">Filtros podem ser combinados para refinar a lista de vulnerabilidades.</div>
++            <div class="filter-buttons">
++              <button class="btn btn-secondary" onclick="clearFilters()">🗑️ Limpar Filtros</button>
++              <button class="btn" onclick="exportFiltered()">📥 Exportar Filtrados (CSV)</button>
++            </div>
+           </div>
+         </div>
+ 
+         <div class="chart-container">
+           <h2>Lista de Vulnerabilidades (<span id="vulnCount">0</span> de <span id="vulnTotal">0</span>)</h2>
+           <div class="table-container">
+             <table>
+               <thead>
+                 <tr>
+-                  <th>DNS</th>
+                   <th>Host IP</th>
++                  <th>DNS</th>
+                   <th>Sistema Operacional</th>
+-                  <th>Título</th>			
+-                  <th>Solução</th>
+-                  <th>Resultados</th>
+-                  <th>Severidade</th>	
+-                  <th>Status</th>				  
+                   <th>QID</th>
++                  <th>Título</th>
++                  <th>Severidade</th>
++                  <th>Status</th>
+                   <th>Porta</th>
+                   <th>Protocolo</th>
++                  <th>Solução</th>
++                  <th>Resultados</th>
+                   <th>Primeira Detecção</th>
+                 </tr>
+               </thead>
+               <tbody id="vulnTableBody"></tbody>
+             </table>
+           </div>
+         </div>
+       </div>
+ 
+       <!-- ====================== -->
+       <!-- TAB: HOSTS             -->
+       <!-- ====================== -->
+       <div id="hosts" class="tab-content">
+         <div class="filter-section">
+           <h3>Busca de Servidores</h3>
+           <div class="filter-group-single">
+             <input type="text" id="searchHost" placeholder="🔍 Buscar servidor (ex: SAP29, pratika, 10.62...)" onkeyup="filterHosts()">
+             <button class="btn btn-secondary" onclick="clearHostSearch()">🗑️ Limpar Busca</button>
+             <button class="btn" onclick="exportHosts()">📥 Exportar Hosts (CSV)</button>
+           </div>
+         </div>
+ 
+         <div class="chart-container">
+           <h2>Lista de Hosts (<span id="hostCount">0</span> de <span id="hostTotal">0</span>)</h2>
+           <div class="table-container">

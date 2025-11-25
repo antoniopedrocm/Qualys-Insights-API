@@ -1,0 +1,1750 @@
+const express = require('express');
+const axios = require('axios');
+const https = require('https');
+const xml2js = require('xml2js');
+const ExcelJS = require('exceljs');
+const cors = require('cors');
+const basicAuth = require('express-basic-auth');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(cors());
+app.use(express.json());
+
+const QUALYS_CONFIG = {
+  username: 'hyper3ap1',
+  password: '9Qn2ctF$a3oO5rb8',
+  baseURL: 'https://qualysguard.qg3.apps.qualys.com'
+};
+
+const auth = basicAuth({
+  users: { 'admin': 'admin123' },
+  challenge: true,
+  realm: 'Qualys API'
+});
+
+const cache = {
+  vulnerabilities: null,
+  hosts: null,
+  lastUpdate: null,
+  ttl: 300000
+};
+
+const qualysClient = axios.create({
+  baseURL: QUALYS_CONFIG.baseURL,
+  auth: {
+    username: QUALYS_CONFIG.username,
+    password: QUALYS_CONFIG.password
+  },
+  headers: {
+    'X-Requested-With': 'API'
+  },
+  httpsAgent: new https.Agent({  
+    rejectUnauthorized: false
+  })
+});
+
+class QualysAPI {
+  async getHostList() {
+    try {
+      const response = await qualysClient.get('/api/2.0/fo/asset/host/', {
+        params: {
+          action: 'list',
+          truncation_limit: '0'
+        }
+      });
+      return await this.parseHostXML(response.data);
+    } catch (error) {
+      console.error('Erro ao obter hosts:', error.message);
+      throw error;
+    }
+  }
+
+  async getVulnerabilities() {
+    try {
+      // Tenta com limite menor para evitar erro 409
+      const response = await qualysClient.get('/api/2.0/fo/asset/host/vm/detection/', {
+        params: {
+          action: 'list',
+          truncation_limit: '1000',
+          status: 'New,Active,Re-Opened',
+          output_format: 'XML',
+          show_tags: '1'
+        },
+        timeout: 120000 // 2 minutos de timeout
+      });
+      return await this.parseVulnerabilityXML(response.data);
+    } catch (error) {
+      console.error('Erro ao obter vulnerabilidades:', error.message);
+      // Se erro 409, tenta com limite ainda menor
+      if (error.response?.status === 409) {
+        console.log('Tentando com limite menor...');
+        try {
+          const response = await qualysClient.get('/api/2.0/fo/asset/host/vm/detection/', {
+            params: {
+              action: 'list',
+              truncation_limit: '500',
+              status: 'New,Active,Re-Opened',
+              output_format: 'XML',
+              show_tags: '1'
+            },
+            timeout: 120000
+          });
+          return await this.parseVulnerabilityXML(response.data);
+        } catch (retryError) {
+          console.error('Erro na segunda tentativa:', retryError.message);
+          throw retryError;
+        }
+      }
+      throw error;
+    }
+  }
+
+  async getScanList() {
+    try {
+      const response = await qualysClient.get('/api/2.0/fo/scan/', {
+        params: {
+          action: 'list'
+        }
+      });
+      return await this.parseScanXML(response.data);
+    } catch (error) {
+      console.error('Erro ao obter scans:', error.message);
+      throw error;
+    }
+  }
+
+  async parseHostXML(xmlData) {
+    const parser = new xml2js.Parser({ explicitArray: false });
+    const result = await parser.parseStringPromise(xmlData);
+    
+    const hosts = [];
+    const hostList = result?.HOST_LIST_OUTPUT?.RESPONSE?.HOST_LIST?.HOST;
+    
+    if (!hostList) return hosts;
+    
+    const hostArray = Array.isArray(hostList) ? hostList : [hostList];
+    
+    hostArray.forEach(host => {
+      // Extrai tags se existirem
+      let tags = '';
+      if (host.TAGS) {
+        const tagList = host.TAGS.TAG;
+        if (tagList) {
+          const tagArray = Array.isArray(tagList) ? tagList : [tagList];
+          tags = tagArray.map(tag => tag.NAME || tag).join(', ');
+        }
+      }
+      
+      hosts.push({
+        id: host.ID || '',
+        ip: host.IP || '',
+        trackingMethod: host.TRACKING_METHOD || '',
+        dns: host.DNS || '',
+        netbios: host.NETBIOS || '',
+        os: host.OS || '',
+        lastVulnScan: host.LAST_VULN_SCAN_DATETIME || '',
+        tags: tags
+      });
+    });
+    
+    return hosts;
+  }
+
+  async parseVulnerabilityXML(xmlData) {
+    const parser = new xml2js.Parser({ explicitArray: false });
+    const result = await parser.parseStringPromise(xmlData);
+    
+    const vulnerabilities = [];
+    const hostList = result?.HOST_LIST_VM_DETECTION_OUTPUT?.RESPONSE?.HOST_LIST?.HOST;
+    
+    if (!hostList) return vulnerabilities;
+    
+    const hostArray = Array.isArray(hostList) ? hostList : [hostList];
+    
+    hostArray.forEach(host => {
+      const ip = host.IP || '';
+      const dns = host.DNS || '';
+      
+      // Extrai tags do host
+      let hostTags = '';
+      if (host.TAGS) {
+        const tagList = host.TAGS.TAG;
+        if (tagList) {
+          const tagArray = Array.isArray(tagList) ? tagList : [tagList];
+          // Normaliza tags: converte espaços em underscores e remove caracteres especiais
+          hostTags = tagArray.map(tag => {
+            const tagName = tag.NAME || tag;
+            return String(tagName).replace(/\s+/g, '_').replace(/\//g, '_');
+          }).join(', ');
+        }
+      }
+      
+      const detections = host.DETECTION_LIST?.DETECTION;
+      if (!detections) return;
+      
+      const detectionArray = Array.isArray(detections) ? detections : [detections];
+      
+      detectionArray.forEach(detection => {
+        vulnerabilities.push({
+          hostIp: ip,
+          hostDns: dns,
+          hostTags: hostTags,
+          qid: detection.QID || '',
+          type: detection.TYPE || '',
+          severity: detection.SEVERITY || '',
+          status: detection.STATUS || '',
+          firstFound: detection.FIRST_FOUND_DATETIME || '',
+          lastFound: detection.LAST_FOUND_DATETIME || '',
+          port: detection.PORT || '',
+          protocol: detection.PROTOCOL || '',
+          ssl: detection.SSL || '',
+          results: detection.RESULTS || ''
+        });
+      });
+    });
+    
+    return vulnerabilities;
+  }
+
+  async parseScanXML(xmlData) {
+    const parser = new xml2js.Parser({ explicitArray: false });
+    const result = await parser.parseStringPromise(xmlData);
+    
+    const scans = [];
+    const scanList = result?.SCAN_LIST_OUTPUT?.RESPONSE?.SCAN_LIST?.SCAN;
+    
+    if (!scanList) return scans;
+    
+    const scanArray = Array.isArray(scanList) ? scanList : [scanList];
+    
+    scanArray.forEach(scan => {
+      scans.push({
+        ref: scan.REF || '',
+        title: scan.TITLE || '',
+        type: scan.TYPE || '',
+        launchDate: scan.LAUNCH_DATETIME || '',
+        state: scan.STATE?.STATE_NAME || '',
+        target: scan.TARGET || ''
+      });
+    });
+    
+    return scans;
+  }
+}
+
+const qualysAPI = new QualysAPI();
+
+// DASHBOARD WEB
+app.get('/', (req, res) => {
+  res.send(`
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Qualys Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container { max-width: 1600px; margin: 0 auto; }
+    h1 {
+      color: white;
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 2.5em;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+    .nav-tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .tab-btn {
+      background: white;
+      color: #667eea;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 10px;
+      font-size: 1em;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      transition: all 0.3s ease;
+    }
+    .tab-btn:hover, .tab-btn.active {
+      background: #667eea;
+      color: white;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    .stat-card {
+      background: white;
+      padding: 25px;
+      border-radius: 15px;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+      transition: transform 0.3s ease;
+    }
+    .stat-card:hover { transform: translateY(-5px); }
+    .stat-card h3 {
+      color: #667eea;
+      font-size: 0.9em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .stat-card .value {
+      font-size: 2.5em;
+      font-weight: bold;
+      color: #333;
+    }
+    .chart-container {
+      background: white;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+      margin-bottom: 30px;
+    }
+    .chart-container h2 {
+      color: #667eea;
+      margin-bottom: 20px;
+      font-size: 1.5em;
+    }
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+      gap: 30px;
+    }
+    .loading {
+      text-align: center;
+      color: white;
+      font-size: 1.5em;
+      padding: 50px;
+    }
+    .spinner {
+      border: 4px solid rgba(255,255,255,0.3);
+      border-top: 4px solid white;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .actions {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      background: white;
+      color: #667eea;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 10px;
+      font-size: 1em;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      transition: all 0.3s ease;
+    }
+    .btn:hover {
+      background: #667eea;
+      color: white;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+    }
+    .error {
+      background: #ff4444;
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .success {
+      background: #4caf50;
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      background: white;
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    th {
+      background: #667eea;
+      color: white;
+      font-weight: bold;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    tr:hover { background: #f5f5f5; }
+    .severity-critical { color: #d32f2f; font-weight: bold; }
+    .severity-high { color: #f57c00; font-weight: bold; }
+    .severity-medium { color: #fbc02d; font-weight: bold; }
+    .severity-low { color: #388e3c; }
+    .table-container {
+      max-height: 600px;
+      overflow-y: auto;
+    }
+    .filter-section {
+      background: white;
+      padding: 20px;
+      border-radius: 15px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    .filter-section h3 {
+      color: #667eea;
+      margin-bottom: 15px;
+    }
+    .filter-group {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .filter-group input, .filter-group select {
+      padding: 10px;
+      border: 2px solid #667eea;
+      border-radius: 5px;
+      font-size: 1em;
+    }
+    .json-viewer {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 20px;
+      border-radius: 10px;
+      overflow-x: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9em;
+      line-height: 1.6;
+      max-height: 600px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🛡️ Qualys Security Dashboard</h1>
+    
+    <div class="nav-tabs">
+      <button class="tab-btn active" onclick="showTab('dashboard')">📊 Dashboard</button>
+      <button class="tab-btn" onclick="showTab('vulnerabilities')">🔴 Vulnerabilidades</button>
+      <button class="tab-btn" onclick="showTab('hosts')">💻 Hosts</button>
+      <button class="tab-btn" onclick="showTab('scans')">🔍 Scans</button>
+      <button class="tab-btn" onclick="showTab('api')">⚙️ API Explorer</button>
+    </div>
+
+    <div id="messages"></div>
+
+    <!-- TAB: DASHBOARD -->
+    <div id="dashboard" class="tab-content active">
+      <div class="actions">
+        <button class="btn" onclick="loadDashboard()">🔄 Atualizar Dashboard</button>
+        <button class="btn" onclick="exportExcel()">📊 Exportar Excel</button>
+        <button class="btn" onclick="exportCSV()">📄 Exportar CSV</button>
+      </div>
+      
+      <div id="dashboardLoading" class="loading" style="display: none;">
+        <div class="spinner"></div>
+        <p>Carregando dados...</p>
+      </div>
+      
+      <div id="dashboardContent">
+        <div class="stats">
+          <div class="stat-card">
+            <h3>Total de Hosts</h3>
+            <div class="value" id="totalHosts">-</div>
+          </div>
+          <div class="stat-card">
+            <h3>Total de Vulnerabilidades</h3>
+            <div class="value" id="totalVulns">-</div>
+          </div>
+          <div class="stat-card">
+            <h3>Críticas</h3>
+            <div class="value severity-critical" id="criticalVulns">-</div>
+          </div>
+          <div class="stat-card">
+            <h3>Altas</h3>
+            <div class="value severity-high" id="highVulns">-</div>
+          </div>
+        </div>
+
+        <div class="charts-grid">
+          <div class="chart-container">
+            <h2>📊 Distribuição por Severidade</h2>
+            <canvas id="severityChart"></canvas>
+          </div>
+          
+          <div class="chart-container">
+            <h2>📈 Top 10 Vulnerabilidades</h2>
+            <canvas id="topVulnsChart"></canvas>
+          </div>
+        </div>
+
+        <div class="charts-grid">
+          <div class="chart-container">
+            <h2>🔧 Desenvolvimento e Qualidade</h2>
+            <canvas id="devQAChart"></canvas>
+          </div>
+          
+          <div class="chart-container">
+            <h2>⚠️ Produção Baixa</h2>
+            <canvas id="prdBaixaChart"></canvas>
+          </div>
+          
+          <div class="chart-container">
+            <h2>🔴 Produção Alta</h2>
+            <canvas id="prdAltaChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-container">
+          <h2>📉 Tendência de Descobertas</h2>
+          <canvas id="trendsChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: VULNERABILIDADES -->
+    <div id="vulnerabilities" class="tab-content">
+      <div class="actions">
+        <button class="btn" onclick="loadVulnerabilities()">🔄 Atualizar Lista</button>
+        <button class="btn" onclick="clearFilters()">🗑️ Limpar Filtros</button>
+        <button class="btn" onclick="exportFiltered()">📥 Exportar Filtrados</button>
+      </div>
+
+      <div class="filter-section">
+        <h3>Filtros Avançados</h3>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+          <!-- Filtro de Severidade -->
+          <div>
+            <label style="font-weight: bold; color: #667eea; margin-bottom: 10px; display: block;">Severidade:</label>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" class="severity-filter" value="5" checked onchange="applyFilters()">
+                <span style="color: #d32f2f; font-weight: bold;">🔴 Crítica</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" class="severity-filter" value="4" checked onchange="applyFilters()">
+                <span style="color: #f57c00; font-weight: bold;">🟠 Alta</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" class="severity-filter" value="3" checked onchange="applyFilters()">
+                <span style="color: #fbc02d; font-weight: bold;">🟡 Média</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" class="severity-filter" value="2" checked onchange="applyFilters()">
+                <span style="color: #388e3c;">🟢 Baixa</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" class="severity-filter" value="1" checked onchange="applyFilters()">
+                <span style="color: #1976d2;">🔵 Info</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Filtros de Busca -->
+          <div>
+            <label style="font-weight: bold; color: #667eea; margin-bottom: 10px; display: block;">Busca por Host:</label>
+            <input type="text" id="filterIp" placeholder="🔍 Buscar por IP (ex: 10.62)" 
+                   style="width: 100%; padding: 10px; border: 2px solid #667eea; border-radius: 5px; margin-bottom: 10px;"
+                   onkeyup="applyFilters()">
+            <input type="text" id="filterDns" placeholder="🔍 Buscar por DNS (ex: sap70)" 
+                   style="width: 100%; padding: 10px; border: 2px solid #667eea; border-radius: 5px; margin-bottom: 10px;"
+                   onkeyup="applyFilters()">
+            <input type="text" id="filterQid" placeholder="🔍 Buscar por QID" 
+                   style="width: 100%; padding: 10px; border: 2px solid #667eea; border-radius: 5px;"
+                   onkeyup="applyFilters()">
+          </div>
+
+          <!-- Filtro de Tags, CVE e Status -->
+          <div>
+            <label style="font-weight: bold; color: #667eea; margin-bottom: 10px; display: block;">Outros Filtros:</label>
+            <input type="text" id="filterTags" placeholder="🏷️ Buscar por Tags (ex: PRD_Alta)" 
+                   style="width: 100%; padding: 10px; border: 2px solid #667eea; border-radius: 5px; margin-bottom: 10px;"
+                   onkeyup="applyFilters()">
+            <input type="text" id="filterCve" placeholder="🔐 Buscar por CVE (ex: CVE-2024)" 
+                   style="width: 100%; padding: 10px; border: 2px solid #667eea; border-radius: 5px; margin-bottom: 10px;"
+                   onkeyup="applyFilters()">
+            <select id="filterStatus" style="width: 100%; padding: 10px; border: 2px solid #667eea; border-radius: 5px;" onchange="applyFilters()">
+              <option value="">📊 Todos os Status</option>
+              <option value="New">Novo</option>
+              <option value="Active">Ativo</option>
+              <option value="Re-Opened">Reaberto</option>
+              <option value="Fixed">Corrigido</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-container">
+        <h2>🔴 Lista de Vulnerabilidades (<span id="vulnCount">0</span> de <span id="vulnTotal">0</span>)</h2>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Host IP</th>
+                <th>DNS</th>
+                <th>QID</th>
+                <th>Severidade</th>
+                <th>Status</th>
+                <th>Porta</th>
+                <th>Protocolo</th>
+                <th>Primeira Detecção</th>
+              </tr>
+            </thead>
+            <tbody id="vulnTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: HOSTS -->
+    <div id="hosts" class="tab-content">
+      <div class="actions">
+        <button class="btn" onclick="loadHosts()">🔄 Atualizar Lista</button>
+        <button class="btn" onclick="exportHosts()">📥 Exportar Hosts</button>
+      </div>
+
+      <div class="filter-section">
+        <h3>Busca de Servidores</h3>
+        <div style="display: flex; gap: 15px; align-items: center;">
+          <input type="text" id="searchHost" placeholder="🔍 Buscar servidor (ex: SAP29, pratika, 10.62...)" 
+                 style="flex: 1; padding: 10px; border: 2px solid #667eea; border-radius: 5px; font-size: 1em;"
+                 onkeyup="filterHosts()">
+          <button class="btn" onclick="clearHostSearch()">🗑️ Limpar Busca</button>
+        </div>
+      </div>
+
+      <div class="chart-container">
+        <h2>💻 Lista de Hosts (<span id="hostCount">0</span> de <span id="hostTotal">0</span>)</h2>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>IP</th>
+                <th>DNS</th>
+                <th>NetBIOS</th>
+                <th>Tags</th>
+                <th>N° Vuln. (C/A/M)</th>
+                <th>OS</th>
+                <th>Último Scan</th>
+              </tr>
+            </thead>
+            <tbody id="hostTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: SCANS -->
+    <div id="scans" class="tab-content">
+      <div class="actions">
+        <button class="btn" onclick="loadScans()">🔄 Atualizar Lista</button>
+      </div>
+
+      <div class="chart-container">
+        <h2>🔍 Lista de Scans (<span id="scanCount">0</span>)</h2>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Referência</th>
+                <th>Título</th>
+                <th>Tipo</th>
+                <th>Data de Execução</th>
+                <th>Estado</th>
+                <th>Alvo</th>
+              </tr>
+            </thead>
+            <tbody id="scanTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: API EXPLORER -->
+    <div id="api" class="tab-content">
+      <div class="chart-container">
+        <h2>⚙️ API Explorer</h2>
+        <div class="filter-group" style="margin-bottom: 20px;">
+          <select id="apiEndpoint" style="flex: 1;">
+            <option value="/api/health">GET /api/health (Health Check)</option>
+            <option value="/api/dashboard/summary">GET /api/dashboard/summary</option>
+            <option value="/api/vulnerabilities">GET /api/vulnerabilities</option>
+            <option value="/api/hosts">GET /api/hosts</option>
+            <option value="/api/scans">GET /api/scans</option>
+          </select>
+          <button class="btn" onclick="testApiEndpoint()">🚀 Executar</button>
+        </div>
+        <div id="apiResponse" class="json-viewer">
+          Selecione um endpoint e clique em Executar
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let charts = {};
+    let currentData = {
+      vulnerabilities: [],
+      filteredVulnerabilities: [],
+      hosts: [],
+      filteredHosts: [],
+      scans: []
+    };
+
+    function showTab(tabName) {
+      document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      
+      document.getElementById(tabName).classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    function showMessage(message, type = 'error') {
+      const messagesDiv = document.getElementById('messages');
+      messagesDiv.innerHTML = \`<div class="\${type}">\${message}</div>\`;
+      setTimeout(() => messagesDiv.innerHTML = '', 5000);
+    }
+
+    async function apiCall(endpoint, needsAuth = true) {
+      const headers = { 'Content-Type': 'application/json' };
+      if (needsAuth) {
+        headers['Authorization'] = 'Basic ' + btoa('admin:admin123');
+      }
+      
+      const response = await fetch(endpoint, { headers });
+      if (!response.ok) throw new Error(\`HTTP \${response.status}\`);
+      return await response.json();
+    }
+
+    async function loadDashboard() {
+      try {
+        document.getElementById('dashboardLoading').style.display = 'block';
+        
+        const [summary, trends] = await Promise.all([
+          apiCall('/api/dashboard/summary'),
+          apiCall('/api/dashboard/trends')
+        ]);
+
+        if (!summary.success) throw new Error(summary.message);
+
+        document.getElementById('totalHosts').textContent = summary.data.totalHosts;
+        document.getElementById('totalVulns').textContent = summary.data.totalVulnerabilities;
+        document.getElementById('criticalVulns').textContent = summary.data.severityDistribution.critical;
+        document.getElementById('highVulns').textContent = summary.data.severityDistribution.high;
+
+        updateCharts(summary.data, trends.data);
+
+        document.getElementById('dashboardLoading').style.display = 'none';
+        showMessage('Dashboard atualizado com sucesso!', 'success');
+      } catch (error) {
+        document.getElementById('dashboardLoading').style.display = 'none';
+        showMessage('Erro ao carregar dashboard: ' + error.message);
+      }
+    }
+
+    function updateCharts(summary, trends) {
+      if (charts.severity) charts.severity.destroy();
+      const severityCtx = document.getElementById('severityChart').getContext('2d');
+      charts.severity = new Chart(severityCtx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Crítica', 'Alta', 'Média', 'Baixa', 'Info'],
+          datasets: [{
+            data: [
+              summary.severityDistribution.critical,
+              summary.severityDistribution.high,
+              summary.severityDistribution.medium,
+              summary.severityDistribution.low,
+              summary.severityDistribution.info
+            ],
+            backgroundColor: ['#d32f2f', '#f57c00', '#fbc02d', '#388e3c', '#1976d2']
+          }]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+      });
+
+      if (charts.topVulns) charts.topVulns.destroy();
+      const topVulnsCtx = document.getElementById('topVulnsChart').getContext('2d');
+      charts.topVulns = new Chart(topVulnsCtx, {
+        type: 'bar',
+        data: {
+          labels: summary.topVulnerabilities.map(v => 'QID ' + v.qid),
+          datasets: [{
+            label: 'Ocorrências',
+            data: summary.topVulnerabilities.map(v => v.count),
+            backgroundColor: '#667eea'
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+
+      // Gráfico Desenvolvimento e Qualidade (DEV_QA)
+      if (charts.devQA) charts.devQA.destroy();
+      const devQACtx = document.getElementById('devQAChart').getContext('2d');
+      charts.devQA = new Chart(devQACtx, {
+        type: 'bar',
+        data: {
+          labels: ['Crítica', 'Alta', 'Média'],
+          datasets: [{
+            label: 'Vulnerabilidades',
+            data: [
+              summary.tagDistribution?.DEV_QA?.critical || 0,
+              summary.tagDistribution?.DEV_QA?.high || 0,
+              summary.tagDistribution?.DEV_QA?.medium || 0
+            ],
+            backgroundColor: ['#d32f2f', '#f57c00', '#fbc02d']
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { 
+            legend: { display: false },
+            title: { display: true, text: \`Total: \${(summary.tagDistribution?.DEV_QA?.total || 0)} vulnerabilidades\` }
+          },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+
+      // Gráfico Produção Baixa (PRD_Baixa)
+      if (charts.prdBaixa) charts.prdBaixa.destroy();
+      const prdBaixaCtx = document.getElementById('prdBaixaChart').getContext('2d');
+      charts.prdBaixa = new Chart(prdBaixaCtx, {
+        type: 'bar',
+        data: {
+          labels: ['Crítica', 'Alta', 'Média'],
+          datasets: [{
+            label: 'Vulnerabilidades',
+            data: [
+              summary.tagDistribution?.PRD_Baixa?.critical || 0,
+              summary.tagDistribution?.PRD_Baixa?.high || 0,
+              summary.tagDistribution?.PRD_Baixa?.medium || 0
+            ],
+            backgroundColor: ['#d32f2f', '#f57c00', '#fbc02d']
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { 
+            legend: { display: false },
+            title: { display: true, text: \`Total: \${(summary.tagDistribution?.PRD_Baixa?.total || 0)} vulnerabilidades\` }
+          },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+
+      // Gráfico Produção Alta (PRD_Alta)
+      if (charts.prdAlta) charts.prdAlta.destroy();
+      const prdAltaCtx = document.getElementById('prdAltaChart').getContext('2d');
+      charts.prdAlta = new Chart(prdAltaCtx, {
+        type: 'bar',
+        data: {
+          labels: ['Crítica', 'Alta', 'Média'],
+          datasets: [{
+            label: 'Vulnerabilidades',
+            data: [
+              summary.tagDistribution?.PRD_Alta?.critical || 0,
+              summary.tagDistribution?.PRD_Alta?.high || 0,
+              summary.tagDistribution?.PRD_Alta?.medium || 0
+            ],
+            backgroundColor: ['#d32f2f', '#f57c00', '#fbc02d']
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { 
+            legend: { display: false },
+            title: { display: true, text: \`Total: \${(summary.tagDistribution?.PRD_Alta?.total || 0)} vulnerabilidades\` }
+          },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+
+      if (charts.trends) charts.trends.destroy();
+      const trendsCtx = document.getElementById('trendsChart').getContext('2d');
+      charts.trends = new Chart(trendsCtx, {
+        type: 'line',
+        data: {
+          labels: trends.trends.map(t => t.date),
+          datasets: [{
+            label: 'Vulnerabilidades Descobertas',
+            data: trends.trends.map(t => t.count),
+            borderColor: '#667eea',
+            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+            tension: 0.4,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: true } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+
+    async function loadVulnerabilities() {
+      try {
+        const data = await apiCall('/api/vulnerabilities');
+        currentData.vulnerabilities = data.data;
+        currentData.filteredVulnerabilities = data.data;
+        displayVulnerabilities(currentData.vulnerabilities);
+        document.getElementById('vulnTotal').textContent = data.data.length;
+        showMessage('Vulnerabilidades carregadas!', 'success');
+      } catch (error) {
+        showMessage('Erro ao carregar vulnerabilidades: ' + error.message);
+      }
+    }
+
+    function displayVulnerabilities(vulns) {
+      const severityLabel = { '5': 'Crítica', '4': 'Alta', '3': 'Média', '2': 'Baixa', '1': 'Info' };
+      const severityClass = { '5': 'critical', '4': 'high', '3': 'medium', '2': 'low', '1': 'low' };
+      
+      document.getElementById('vulnCount').textContent = vulns.length;
+      document.getElementById('vulnTableBody').innerHTML = vulns.map(v => \`
+        <tr>
+          <td>\${v.hostIp}</td>
+          <td>\${v.hostDns}</td>
+          <td>\${v.qid}</td>
+          <td class="severity-\${severityClass[v.severity]}">\${severityLabel[v.severity] || v.severity}</td>
+          <td>\${v.status}</td>
+          <td>\${v.port}</td>
+          <td>\${v.protocol}</td>
+          <td>\${v.firstFound.split('T')[0]}</td>
+        </tr>
+      \`).join('');
+    }
+
+    function applyFilters() {
+      // Pega severidades selecionadas
+      const selectedSeverities = Array.from(document.querySelectorAll('.severity-filter:checked'))
+        .map(cb => cb.value);
+      
+      const ip = document.getElementById('filterIp').value.toLowerCase().trim();
+      const dns = document.getElementById('filterDns').value.toLowerCase().trim();
+      const qid = document.getElementById('filterQid').value.trim();
+      const tags = document.getElementById('filterTags').value.toLowerCase().trim();
+      const cve = document.getElementById('filterCve').value.toUpperCase().trim();
+      const status = document.getElementById('filterStatus').value;
+
+      let filtered = currentData.vulnerabilities;
+
+      // Se TODOS os filtros estão vazios, mostra tudo
+      const hasActiveFilters = selectedSeverities.length < 5 || ip || dns || qid || tags || cve || status;
+
+      if (!hasActiveFilters) {
+        currentData.filteredVulnerabilities = filtered;
+        displayVulnerabilities(filtered);
+        showMessage(\`Mostrando todas as \${filtered.length} vulnerabilidades.\`, 'success');
+        return;
+      }
+
+      // Filtro de severidade (multi-seleção)
+      if (selectedSeverities.length > 0 && selectedSeverities.length < 5) {
+        filtered = filtered.filter(v => selectedSeverities.includes(v.severity));
+      }
+
+      // Filtro de IP (busca parcial)
+      if (ip) {
+        filtered = filtered.filter(v => v.hostIp.toLowerCase().includes(ip));
+      }
+
+      // Filtro de DNS (busca parcial - case insensitive)
+      if (dns) {
+        filtered = filtered.filter(v => 
+          v.hostDns && v.hostDns.toLowerCase().includes(dns)
+        );
+      }
+
+      // Filtro de QID
+      if (qid) {
+        filtered = filtered.filter(v => v.qid === qid);
+      }
+
+      // Filtro de Tags (busca nas tags do host - ex: PRD_Alta)
+      if (tags) {
+        filtered = filtered.filter(v => 
+          v.hostTags && v.hostTags.toLowerCase().includes(tags)
+        );
+      }
+
+      // Filtro de CVE (busca nos resultados - ex: CVE-2024-1234)
+      if (cve) {
+        filtered = filtered.filter(v => 
+          v.results && v.results.toUpperCase().includes(cve)
+        );
+      }
+
+      // Filtro de Status
+      if (status) {
+        filtered = filtered.filter(v => v.status === status);
+      }
+
+      currentData.filteredVulnerabilities = filtered;
+      displayVulnerabilities(filtered);
+      
+      if (filtered.length === 0) {
+        showMessage('Nenhuma vulnerabilidade encontrada com os filtros aplicados.');
+      } else {
+        showMessage(\`Filtros aplicados! \${filtered.length} vulnerabilidades encontradas.\`, 'success');
+      }
+    }
+
+    function clearFilters() {
+      // Marca todos os checkboxes de severidade
+      document.querySelectorAll('.severity-filter').forEach(cb => cb.checked = true);
+      
+      // Limpa campos de texto
+      document.getElementById('filterIp').value = '';
+      document.getElementById('filterDns').value = '';
+      document.getElementById('filterQid').value = '';
+      document.getElementById('filterTags').value = '';
+      document.getElementById('filterStatus').value = '';
+
+      // Mostra todas as vulnerabilidades
+      currentData.filteredVulnerabilities = currentData.vulnerabilities;
+      displayVulnerabilities(currentData.vulnerabilities);
+      
+      showMessage('Filtros limpos!', 'success');
+    }
+
+    async function exportFiltered() {
+      try {
+        if (!currentData.filteredVulnerabilities || currentData.filteredVulnerabilities.length === 0) {
+          showMessage('Nenhuma vulnerabilidade para exportar!');
+          return;
+        }
+
+        // Cria CSV manualmente com os dados filtrados
+        const headers = ['IP do Host', 'DNS do Host', 'Tags', 'QID', 'Severidade', 'Tipo', 'Status', 'Porta', 'Protocolo', 'Primeira Detecção', 'Última Detecção'];
+        const severityLabel = { '5': 'Crítica', '4': 'Alta', '3': 'Média', '2': 'Baixa', '1': 'Info' };
+        
+        let csv = headers.join(',') + '\\n';
+        
+        currentData.filteredVulnerabilities.forEach(vuln => {
+          const row = [
+            vuln.hostIp,
+            vuln.hostDns,
+            vuln.hostTags || '',
+            vuln.qid,
+            severityLabel[vuln.severity] || vuln.severity,
+            vuln.type,
+            vuln.status,
+            vuln.port,
+            vuln.protocol,
+            vuln.firstFound,
+            vuln.lastFound
+          ].map(field => \`"\${field || ''}"\`);
+          
+          csv += row.join(',') + '\\n';
+        });
+
+        // Cria e baixa o arquivo
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = \`qualys_filtered_\${new Date().toISOString().slice(0,10)}.csv\`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        showMessage(\`\${currentData.filteredVulnerabilities.length} vulnerabilidades exportadas com sucesso!\`, 'success');
+      } catch (error) {
+        showMessage('Erro ao exportar: ' + error.message);
+      }
+    }
+
+    async function loadHosts() {
+      try {
+        const [hostsData, vulnsData] = await Promise.all([
+          apiCall('/api/hosts'),
+          apiCall('/api/vulnerabilities')
+        ]);
+        
+        // Calcula vulnerabilidades (C/A/M) por host
+        const vulnsByHost = {};
+        vulnsData.data.forEach(vuln => {
+          // Conta apenas Crítica (5), Alta (4) e Média (3)
+          if (['3', '4', '5'].includes(vuln.severity)) {
+            const ip = vuln.hostIp;
+            vulnsByHost[ip] = (vulnsByHost[ip] || 0) + 1;
+          }
+        });
+        
+        // Adiciona contagem de vulnerabilidades aos hosts
+        currentData.hosts = hostsData.data.map(host => ({
+          ...host,
+          vulnCount: vulnsByHost[host.ip] || 0
+        }));
+        
+        currentData.filteredHosts = currentData.hosts;
+        displayHosts(currentData.hosts);
+        
+        document.getElementById('hostTotal').textContent = hostsData.total;
+        showMessage('Hosts carregados com sucesso!', 'success');
+      } catch (error) {
+        showMessage('Erro ao carregar hosts: ' + error.message);
+      }
+    }
+
+    function displayHosts(hosts) {
+      document.getElementById('hostCount').textContent = hosts.length;
+      document.getElementById('hostTableBody').innerHTML = hosts.map(h => \`
+        <tr>
+          <td>\${h.id}</td>
+          <td>\${h.ip}</td>
+          <td>\${h.dns}</td>
+          <td>\${h.netbios}</td>
+          <td><span style="color: #667eea; font-weight: bold;">\${h.tags || '-'}</span></td>
+          <td style="text-align: center;">
+            <span style="background: \${h.vulnCount > 10 ? '#d32f2f' : h.vulnCount > 5 ? '#f57c00' : '#388e3c'}; 
+                         color: white; 
+                         padding: 5px 10px; 
+                         border-radius: 5px; 
+                         font-weight: bold;">
+              \${h.vulnCount}
+            </span>
+          </td>
+          <td>\${h.os}</td>
+          <td>\${h.lastVulnScan}</td>
+        </tr>
+      \`).join('');
+    }
+
+    function filterHosts() {
+      const search = document.getElementById('searchHost').value.toLowerCase().trim();
+      
+      if (!search) {
+        currentData.filteredHosts = currentData.hosts;
+        displayHosts(currentData.hosts);
+        return;
+      }
+      
+      const filtered = currentData.hosts.filter(h => 
+        h.ip.toLowerCase().includes(search) ||
+        (h.dns && h.dns.toLowerCase().includes(search)) ||
+        (h.netbios && h.netbios.toLowerCase().includes(search)) ||
+        (h.tags && h.tags.toLowerCase().includes(search)) ||
+        h.id.toString().includes(search)
+      );
+      
+      currentData.filteredHosts = filtered;
+      displayHosts(filtered);
+      
+      if (filtered.length === 0) {
+        showMessage('Nenhum host encontrado com o termo: ' + search);
+      }
+    }
+
+    function clearHostSearch() {
+      document.getElementById('searchHost').value = '';
+      currentData.filteredHosts = currentData.hosts;
+      displayHosts(currentData.hosts);
+      showMessage('Busca limpa!', 'success');
+    }
+
+    async function exportHosts() {
+      try {
+        if (!currentData.filteredHosts || currentData.filteredHosts.length === 0) {
+          showMessage('Nenhum host para exportar!');
+          return;
+        }
+
+        const headers = ['ID', 'IP', 'DNS', 'NetBIOS', 'Tags', 'N° Vulnerabilidades (C/A/M)', 'Sistema Operacional', 'Último Scan'];
+        
+        let csv = headers.join(',') + '\\n';
+        
+        currentData.filteredHosts.forEach(host => {
+          const row = [
+            host.id,
+            host.ip,
+            host.dns,
+            host.netbios,
+            host.tags || '',
+            host.vulnCount || 0,
+            host.os,
+            host.lastVulnScan
+          ].map(field => \`"\${field || ''}"\`);
+          
+          csv += row.join(',') + '\\n';
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = \`qualys_hosts_\${new Date().toISOString().slice(0,10)}.csv\`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        showMessage(\`\${currentData.filteredHosts.length} hosts exportados com sucesso!\`, 'success');
+      } catch (error) {
+        showMessage('Erro ao exportar hosts: ' + error.message);
+      }
+    }
+
+    async function loadScans() {
+      try {
+        const data = await apiCall('/api/scans');
+        currentData.scans = data.data;
+        
+        document.getElementById('scanCount').textContent = data.total;
+        document.getElementById('scanTableBody').innerHTML = data.data.map(s => \`
+          <tr>
+            <td>\${s.ref}</td>
+            <td>\${s.title}</td>
+            <td>\${s.type}</td>
+            <td>\${s.launchDate}</td>
+            <td>\${s.state}</td>
+            <td>\${s.target}</td>
+          </tr>
+        \`).join('');
+        
+        showMessage('Scans carregados!', 'success');
+      } catch (error) {
+        showMessage('Erro ao carregar scans: ' + error.message);
+      }
+    }
+
+    async function testApiEndpoint() {
+      try {
+        const endpoint = document.getElementById('apiEndpoint').value;
+        const needsAuth = endpoint !== '/api/health';
+        const data = await apiCall(endpoint, needsAuth);
+        
+        document.getElementById('apiResponse').textContent = JSON.stringify(data, null, 2);
+        showMessage('Endpoint executado com sucesso!', 'success');
+      } catch (error) {
+        document.getElementById('apiResponse').textContent = 'Erro: ' + error.message;
+        showMessage('Erro ao executar endpoint: ' + error.message);
+      }
+    }
+
+    async function exportExcel() {
+      try {
+        const response = await fetch('/api/export/vulnerabilities/excel', {
+          headers: { 'Authorization': 'Basic ' + btoa('admin:admin123') }
+        });
+        
+        if (!response.ok) throw new Error('Erro ao exportar Excel');
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'qualys_vulnerabilities.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        showMessage('Excel exportado com sucesso!', 'success');
+      } catch (error) {
+        showMessage('Erro ao exportar Excel: ' + error.message);
+      }
+    }
+
+    async function exportCSV() {
+      try {
+        const response = await fetch('/api/export/vulnerabilities/csv', {
+          headers: { 'Authorization': 'Basic ' + btoa('admin:admin123') }
+        });
+        
+        if (!response.ok) throw new Error('Erro ao exportar CSV');
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'qualys_vulnerabilities.csv';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        showMessage('CSV exportado com sucesso!', 'success');
+      } catch (error) {
+        showMessage('Erro ao exportar CSV: ' + error.message);
+      }
+    }
+
+    // Carregar dashboard ao iniciar
+    window.onload = () => {
+      loadDashboard();
+    };
+  </script>
+</body>
+</html>
+  `);
+});
+
+// ROTAS API
+
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'online',
+    timestamp: new Date().toISOString(),
+    qualysUrl: QUALYS_CONFIG.baseURL,
+    version: '1.0.0'
+  });
+});
+
+// Endpoint de debug para verificar tags
+app.get('/api/debug/tags', auth, async (req, res) => {
+  try {
+    const vulnerabilities = await qualysAPI.getVulnerabilities();
+    
+    // Pega amostra de vulnerabilidades com tags
+    const samplesWithTags = vulnerabilities
+      .filter(v => v.hostTags)
+      .slice(0, 20)
+      .map(v => ({
+        ip: v.hostIp,
+        dns: v.hostDns,
+        tags: v.hostTags,
+        severity: v.severity
+      }));
+    
+    // Conta tags únicas
+    const uniqueTags = new Set();
+    vulnerabilities.forEach(v => {
+      if (v.hostTags) {
+        v.hostTags.split(',').forEach(tag => {
+          uniqueTags.add(tag.trim());
+        });
+      }
+    });
+    
+    res.json({
+      success: true,
+      totalVulnerabilities: vulnerabilities.length,
+      vulnerabilitiesWithTags: vulnerabilities.filter(v => v.hostTags).length,
+      uniqueTags: Array.from(uniqueTags).sort(),
+      samples: samplesWithTags
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/api/hosts', auth, async (req, res) => {
+  try {
+    const now = Date.now();
+    
+    if (cache.hosts && cache.lastUpdate && (now - cache.lastUpdate) < cache.ttl) {
+      return res.json({
+        success: true,
+        total: cache.hosts.length,
+        cached: true,
+        data: cache.hosts
+      });
+    }
+    
+    const hosts = await qualysAPI.getHostList();
+    cache.hosts = hosts;
+    cache.lastUpdate = now;
+    
+    res.json({
+      success: true,
+      total: hosts.length,
+      cached: false,
+      data: hosts
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao buscar hosts',
+      message: error.message
+    });
+  }
+});
+
+app.get('/api/vulnerabilities', auth, async (req, res) => {
+  try {
+    const now = Date.now();
+    
+    if (cache.vulnerabilities && cache.lastUpdate && (now - cache.lastUpdate) < cache.ttl) {
+      return res.json({
+        success: true,
+        total: cache.vulnerabilities.length,
+        cached: true,
+        data: cache.vulnerabilities
+      });
+    }
+    
+    const vulnerabilities = await qualysAPI.getVulnerabilities();
+    cache.vulnerabilities = vulnerabilities;
+    cache.lastUpdate = now;
+    
+    res.json({
+      success: true,
+      total: vulnerabilities.length,
+      cached: false,
+      data: vulnerabilities
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao buscar vulnerabilidades',
+      message: error.message
+    });
+  }
+});
+
+app.get('/api/scans', auth, async (req, res) => {
+  try {
+    const scans = await qualysAPI.getScanList();
+    res.json({
+      success: true,
+      total: scans.length,
+      data: scans
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao buscar scans',
+      message: error.message
+    });
+  }
+});
+
+app.get('/api/dashboard/summary', auth, async (req, res) => {
+  try {
+    const [vulnerabilities, hosts] = await Promise.all([
+      qualysAPI.getVulnerabilities(),
+      qualysAPI.getHostList()
+    ]);
+    
+    const severityCount = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+    const qidCount = {};
+    const statusCount = {};
+    
+    // Contadores por tag (apenas Crítica, Alta, Média)
+    const tagDistribution = {
+      DEV_QA: { critical: 0, high: 0, medium: 0, total: 0 },
+      PRD_Baixa: { critical: 0, high: 0, medium: 0, total: 0 },
+      PRD_Alta: { critical: 0, high: 0, medium: 0, total: 0 }
+    };
+    
+    console.log(`\n📊 Processando ${vulnerabilities.length} vulnerabilidades...`);
+    
+    vulnerabilities.forEach(vuln => {
+      const severity = vuln.severity || '0';
+      if (severityCount[severity] !== undefined) {
+        severityCount[severity]++;
+      }
+      
+      const qid = vuln.qid || 'Unknown';
+      qidCount[qid] = (qidCount[qid] || 0) + 1;
+      
+      const status = vuln.status || 'Unknown';
+      statusCount[status] = (statusCount[status] || 0) + 1;
+      
+      // Distribuição por tags (apenas severidades 3, 4, 5)
+      if (vuln.hostTags && ['3', '4', '5'].includes(severity)) {
+        const tags = vuln.hostTags.toUpperCase().replace(/\s/g, '_');
+        
+        // DEV_QA ou DEV_QAs (aceita ambos)
+        if (tags.includes('DEV_QA')) {
+          if (severity === '5') tagDistribution.DEV_QA.critical++;
+          if (severity === '4') tagDistribution.DEV_QA.high++;
+          if (severity === '3') tagDistribution.DEV_QA.medium++;
+          tagDistribution.DEV_QA.total++;
+        }
+        
+        // PRD_Baixa
+        if (tags.includes('PRD_BAIXA')) {
+          if (severity === '5') tagDistribution.PRD_Baixa.critical++;
+          if (severity === '4') tagDistribution.PRD_Baixa.high++;
+          if (severity === '3') tagDistribution.PRD_Baixa.medium++;
+          tagDistribution.PRD_Baixa.total++;
+        }
+        
+        // PRD_Alta
+        if (tags.includes('PRD_ALTA')) {
+          if (severity === '5') tagDistribution.PRD_Alta.critical++;
+          if (severity === '4') tagDistribution.PRD_Alta.high++;
+          if (severity === '3') tagDistribution.PRD_Alta.medium++;
+          tagDistribution.PRD_Alta.total++;
+        }
+      }
+    });
+    
+    console.log('🏷️ Distribuição por Tags:');
+    console.log('  DEV_QA:', tagDistribution.DEV_QA);
+    console.log('  PRD_Baixa:', tagDistribution.PRD_Baixa);
+    console.log('  PRD_Alta:', tagDistribution.PRD_Alta);
+    
+    const topQids = Object.entries(qidCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([qid, count]) => ({ qid, count }));
+    
+    res.json({
+      success: true,
+      data: {
+        totalHosts: hosts.length,
+        totalVulnerabilities: vulnerabilities.length,
+        severityDistribution: {
+          critical: severityCount['5'],
+          high: severityCount['4'],
+          medium: severityCount['3'],
+          low: severityCount['2'],
+          info: severityCount['1']
+        },
+        statusDistribution: statusCount,
+        topVulnerabilities: topQids,
+        tagDistribution: tagDistribution,
+        lastUpdated: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('❌ Erro ao gerar resumo:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao gerar resumo',
+      message: error.message
+    });
+  }
+});
+
+app.get('/api/dashboard/trends', auth, async (req, res) => {
+  try {
+    const vulnerabilities = await qualysAPI.getVulnerabilities();
+    
+    const dateCount = {};
+    vulnerabilities.forEach(vuln => {
+      const firstFound = vuln.firstFound;
+      if (firstFound) {
+        const date = firstFound.split('T')[0];
+        dateCount[date] = (dateCount[date] || 0) + 1;
+      }
+    });
+    
+    const trends = Object.entries(dateCount)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, count]) => ({ date, count }));
+    
+    res.json({
+      success: true,
+      data: {
+        trends,
+        totalDays: trends.length
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao gerar tendências',
+      message: error.message
+    });
+  }
+});
+
+app.post('/api/vulnerabilities/filter', auth, async (req, res) => {
+  try {
+    const filters = req.body;
+    const vulnerabilities = await qualysAPI.getVulnerabilities();
+    
+    let filtered = vulnerabilities;
+    
+    if (filters.severity && Array.isArray(filters.severity)) {
+      filtered = filtered.filter(v => filters.severity.includes(v.severity));
+    }
+    
+    if (filters.status && Array.isArray(filters.status)) {
+      filtered = filtered.filter(v => filters.status.includes(v.status));
+    }
+    
+    if (filters.ip) {
+      filtered = filtered.filter(v => v.hostIp.includes(filters.ip));
+    }
+    
+    if (filters.qid) {
+      filtered = filtered.filter(v => v.qid === filters.qid);
+    }
+    
+    res.json({
+      success: true,
+      total: filtered.length,
+      data: filtered
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao filtrar vulnerabilidades',
+      message: error.message
+    });
+  }
+});
+
+app.get('/api/export/vulnerabilities/excel', auth, async (req, res) => {
+  try {
+    const vulnerabilities = await qualysAPI.getVulnerabilities();
+    
+    if (vulnerabilities.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Nenhuma vulnerabilidade encontrada'
+      });
+    }
+    
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Vulnerabilidades');
+    
+    worksheet.columns = [
+      { header: 'IP do Host', key: 'hostIp', width: 15 },
+      { header: 'DNS do Host', key: 'hostDns', width: 30 },
+      { header: 'QID', key: 'qid', width: 10 },
+      { header: 'Severidade', key: 'severity', width: 12 },
+      { header: 'Tipo', key: 'type', width: 15 },
+      { header: 'Status', key: 'status', width: 12 },
+      { header: 'Porta', key: 'port', width: 10 },
+      { header: 'Protocolo', key: 'protocol', width: 12 },
+      { header: 'Primeira Detecção', key: 'firstFound', width: 20 },
+      { header: 'Última Detecção', key: 'lastFound', width: 20 }
+    ];
+    
+    worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    worksheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF4472C4' }
+    };
+    
+    vulnerabilities.forEach(vuln => {
+      worksheet.addRow(vuln);
+    });
+    
+    worksheet.autoFilter = {
+      from: 'A1',
+      to: 'J1'
+    };
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `qualys_vulnerabilities_${timestamp}.xlsx`;
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    
+    await workbook.xlsx.write(res);
+    res.end();
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao exportar Excel',
+      message: error.message
+    });
+  }
+});
+
+app.get('/api/export/vulnerabilities/csv', auth, async (req, res) => {
+  try {
+    const vulnerabilities = await qualysAPI.getVulnerabilities();
+    
+    if (vulnerabilities.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Nenhuma vulnerabilidade encontrada'
+      });
+    }
+    
+    const headers = ['IP do Host', 'DNS do Host', 'QID', 'Severidade', 'Tipo', 'Status', 'Porta', 'Protocolo', 'Primeira Detecção', 'Última Detecção'];
+    
+    let csv = headers.join(',') + '\n';
+    
+    vulnerabilities.forEach(vuln => {
+      const row = [
+        vuln.hostIp,
+        vuln.hostDns,
+        vuln.qid,
+        vuln.severity,
+        vuln.type,
+        vuln.status,
+        vuln.port,
+        vuln.protocol,
+        vuln.firstFound,
+        vuln.lastFound
+      ].map(field => `"${field || ''}"`);
+      
+      csv += row.join(',') + '\n';
+    });
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `qualys_vulnerabilities_${timestamp}.csv`;
+    
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao exportar CSV',
+      message: error.message
+    });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 API Qualys rodando na porta ${PORT}`);
+  console.log(`📊 Dashboard: http://localhost:${PORT}`);
+  console.log(`🔐 API Endpoints: http://localhost:${PORT}/api/`);
+  console.log(`   Credenciais: admin / admin123`);
+  console.log('');
+  console.log('✅ Todas as funcionalidades disponíveis!');
+});
