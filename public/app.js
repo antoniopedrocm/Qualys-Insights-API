@@ -105,13 +105,18 @@ async function apiCall(endpoint, needsAuth = true) {
     // btoa (Base64) é uma função nativa do browser
     headers['Authorization'] = 'Basic ' + btoa('admin:admin123');
   }
-  
+
   // O endpoint agora é relativo (o browser sabe que é no mesmo host)
   const response = await fetch(endpoint, { headers });
+  const parsedBody = await response.json().catch(() => null);
+
   if (!response.ok) {
-    throw new Error(`Erro HTTP ${response.status} ao buscar ${endpoint}`);
+    const serverMessage = parsedBody?.message || parsedBody?.error;
+    const message = serverMessage ? `${serverMessage} (HTTP ${response.status})` : `Erro HTTP ${response.status} ao buscar ${endpoint}`;
+    throw new Error(message);
   }
-  return await response.json();
+
+  return parsedBody;
 }
 
 async function loadDashboard() {
