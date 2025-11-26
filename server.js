@@ -163,13 +163,13 @@ class QualysAPI {
 
     return parsedVulnerabilities.map(vuln => {
       const kb = kbDetails[vuln.qid] || {};
-      const normalizedUniqueId = vuln.uniqueVulnId || kb.uniqueVulnId || '';
-      const normalizedDetectionId = normalizedUniqueId || vuln.detectionId || '';
+      const composedDetectionId = `${vuln.hostId || ''}-${vuln.qid || ''}`;
+      const normalizedUniqueId = vuln.uniqueVulnId || kb.uniqueVulnId || composedDetectionId;
 
       return {
         ...vuln,
-        detectionId: normalizedDetectionId,
-        uniqueVulnId: normalizedDetectionId,
+        detectionId: composedDetectionId,
+        uniqueVulnId: normalizedUniqueId,
         title: vuln.title || kb.title || '',
         solution: vuln.solution || kb.solution || ''
       };
@@ -913,8 +913,9 @@ app.get('/api/export/vulnerabilities/csv', auth, async (req, res) => {
     let csv = headers.join(',') + '\n';
     
     vulnerabilities.forEach(vuln => {
+      const detectionId = vuln.detectionId || `${vuln.hostId || ''}-${vuln.qid || ''}`;
       const row = [
-        vuln.uniqueVulnId || vuln.detectionId,
+        detectionId,
         vuln.hostDns,
         vuln.hostIp,
         vuln.os || '',
