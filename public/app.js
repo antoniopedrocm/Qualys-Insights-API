@@ -132,6 +132,7 @@ async function loadDashboard() {
     document.getElementById('totalVulns').textContent = summary.data.totalVulnerabilities;
     document.getElementById('criticalVulns').textContent = summary.data.severityDistribution.critical;
     document.getElementById('highVulns').textContent = summary.data.severityDistribution.high;
+    document.getElementById('mediumVulns').textContent = summary.data.severityDistribution.medium;
 
     // Atualiza Gráficos
     updateCharts(summary.data, trends.data);
@@ -145,7 +146,7 @@ async function loadDashboard() {
 }
 
 function updateCharts(summary, trends) {
-  const sevColors = ['#e63946', '#f77f00', '#fbc02d', '#00afb9', '#0077b6']; // Crítico, Alto, Médio, Baixo, Info
+  const sevColors = ['#e63946', '#f77f00', '#fbc02d']; // Crítico, Alto, Médio
 
   // --- Gráfico de Severidade (Doughnut) ---
   if (charts.severity) charts.severity.destroy();
@@ -153,14 +154,12 @@ function updateCharts(summary, trends) {
   charts.severity = new Chart(severityCtx, {
     type: 'doughnut',
     data: {
-      labels: ['Crítica', 'Alta', 'Média', 'Baixa', 'Info'],
+      labels: ['Crítica', 'Alta', 'Média'],
       datasets: [{
         data: [
           summary.severityDistribution.critical,
           summary.severityDistribution.high,
-          summary.severityDistribution.medium,
-          summary.severityDistribution.low,
-          summary.severityDistribution.info
+          summary.severityDistribution.medium
         ],
         backgroundColor: sevColors,
         borderWidth: 0,

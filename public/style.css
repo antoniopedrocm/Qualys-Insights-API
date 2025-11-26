@@ -223,6 +223,8 @@ body {
 .stat-card.sev-critical .value { color: var(--sev-critical); }
 .stat-card.sev-high { border-color: var(--sev-high); }
 .stat-card.sev-high .value { color: var(--sev-high); }
+.stat-card.sev-medium { border-color: var(--sev-medium); }
+.stat-card.sev-medium .value { color: var(--sev-medium); }
 
 
 /* Layout dos Gráficos */

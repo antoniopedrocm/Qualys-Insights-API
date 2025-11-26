@@ -713,6 +713,7 @@ app.get('/api/dashboard/summary', auth, async (req, res) => {
 
     const vulnerabilities = vulnResult?.data || [];
     const hosts = hostResult?.data || [];
+    const relevantVulns = vulnerabilities.filter(vuln => ['3', '4', '5'].includes(String(vuln.severity)));
     
     const severityCount = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
     const qidCount = {};
@@ -724,7 +725,7 @@ app.get('/api/dashboard/summary', auth, async (req, res) => {
       PRD_Alta: { critical: 0, high: 0, medium: 0, total: 0 }
     };
     
-    vulnerabilities.forEach(vuln => {
+    relevantVulns.forEach(vuln => {
       const severity = vuln.severity || '0';
       if (severityCount[severity] !== undefined) {
         severityCount[severity]++;
@@ -771,7 +772,7 @@ app.get('/api/dashboard/summary', auth, async (req, res) => {
       success: true,
       data: {
         totalHosts: hosts.length,
-        totalVulnerabilities: vulnerabilities.length,
+        totalVulnerabilities: relevantVulns.length,
         severityDistribution: {
           critical: severityCount['5'],
           high: severityCount['4'],
@@ -798,9 +799,10 @@ app.get('/api/dashboard/summary', auth, async (req, res) => {
 app.get('/api/dashboard/trends', auth, async (req, res) => {
   try {
     const { data: vulnerabilities = [] } = await getCachedData(cache.vulnerabilities, () => qualysAPI.getVulnerabilities());
-    
+    const relevantVulns = vulnerabilities.filter(vuln => ['3', '4', '5'].includes(String(vuln.severity)));
+
     const dateCount = {};
-    vulnerabilities.forEach(vuln => {
+    relevantVulns.forEach(vuln => {
       const firstFound = vuln.firstFound;
       if (firstFound) {
         const date = firstFound.split('T')[0];
