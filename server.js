@@ -131,8 +131,9 @@ class QualysAPI {
       });
       return await this.buildVulnerabilitiesFromXml(response.data);
     } catch (error) {
-      console.error('Erro ao obter vulnerabilidades (Tentativa 1):', error.message);
-      
+      const formattedError = formatErrorMessage(error);
+      console.error('Erro ao obter vulnerabilidades (Tentativa 1):', formattedError);
+
       if (error.response?.status === 409) {
         console.log('Tentando com limite menor...');
         try {
@@ -152,7 +153,7 @@ class QualysAPI {
           throw retryError;
         }
       }
-      throw error;
+      throw new Error(formattedError);
     }
   }
 
@@ -679,11 +680,12 @@ app.get('/api/vulnerabilities', auth, async (req, res) => {
       data: vulnerabilities
     });
   } catch (error) {
-    console.error('Erro em /api/vulnerabilities:', error.message);
-    res.status(500).json({
+    const message = formatErrorMessage(error);
+    console.error('Erro em /api/vulnerabilities:', message);
+    res.status(502).json({
       success: false,
       error: 'Erro ao buscar vulnerabilidades',
-      message: error.message
+      message
     });
   }
 });
