@@ -454,9 +454,13 @@ function displayVulnerabilities(vulns) {
   const severityClass = { '5': 'critical', '4': 'high', '3': 'medium', '2': 'low', '1': 'low' };
 
   document.getElementById('vulnCount').textContent = vulns.length;
-  document.getElementById('vulnTableBody').innerHTML = vulns.map(v => `
+  document.getElementById('vulnTableBody').innerHTML = vulns.map(v => {
+    // Prioriza uniqueVulnId, depois detectionId, senão vazio
+    const detectionId = v.uniqueVulnId || v.detectionId || '';
+    
+    return `
     <tr>
-      <td>${v.uniqueVulnId || v.detectionId || ''}</td>
+      <td>${detectionId}</td>
       <td>${v.hostDns || ''}</td>
       <td>${v.hostIp || ''}</td>
       <td>${v.os || ''}</td>
@@ -469,7 +473,8 @@ function displayVulnerabilities(vulns) {
       <td>${v.port || ''}</td>
       <td>${v.firstFound ? v.firstFound.split('T')[0] : ''}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function applyFilters() {
