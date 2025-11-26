@@ -163,7 +163,8 @@ class QualysAPI {
 
     return parsedVulnerabilities.map(vuln => {
       const kb = kbDetails[vuln.qid] || {};
-      const normalizedDetectionId = vuln.uniqueVulnId || vuln.detectionId || '';
+      const normalizedUniqueId = vuln.uniqueVulnId || kb.uniqueVulnId || '';
+      const normalizedDetectionId = normalizedUniqueId || vuln.detectionId || '';
 
       return {
         ...vuln,
@@ -361,6 +362,7 @@ class QualysAPI {
       const solutionValue = typeof vuln.SOLUTION === 'object' ? (vuln.SOLUTION.SOLUTION || vuln.SOLUTION) : vuln.SOLUTION;
 
       details[qid] = {
+        uniqueVulnId: vuln.UNIQUE_VULN_ID || '',
         title: vuln.TITLE || '',
         solution: solutionValue || ''
       };
