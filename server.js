@@ -1048,9 +1048,12 @@ app.post('/efetividade/calcular', auth, async (req, res) => {
     const detections = (await Promise.all(detectionPromises)).filter(Boolean);
 
     if (detections.length === 0) {
-      return res.status(404).json({
+      return res.status(200).json({
         success: false,
-        error: 'Nenhum dado retornado pela API do Qualys para os Detection IDs fornecidos.'
+        message: 'Nenhuma detecção foi retornada pela API do Qualys para os IDs informados. Verifique se os IDs estão disponíveis na sua conta ou se há dados recentes na plataforma.',
+        attemptedDetectionIds: detectionIds,
+        totalAttempted: detectionIds.length,
+        detections: []
       });
     }
 
