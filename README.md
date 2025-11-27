@@ -8,3 +8,5 @@ Dashboard para visualização e análise de vulnerabilidades do Qualys.
 2. Instale as dependências:
    ```bash
    npm install
+
+   npm start
