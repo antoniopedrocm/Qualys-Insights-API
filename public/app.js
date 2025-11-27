@@ -461,7 +461,7 @@ function displayVulnerabilities(vulns) {
   document.getElementById('vulnCount').textContent = vulns.length;
   document.getElementById('vulnTableBody').innerHTML = vulns.map(v => `
     <tr>
-      <td>${v.detectionId || `${v.hostId || ''}-${v.qid || ''}`}</td>
+      <td>${v.detectionId || v.uniqueVulnId || ''}</td>
       <td>${v.hostDns || ''}</td>
       <td>${v.hostIp || ''}</td>
       <td>${v.os || ''}</td>
@@ -504,7 +504,7 @@ function applyFilters() {
   // Busca rápida
   if (quickSearch) {
     filtered = filtered.filter(v => {
-      const detectionId = v.detectionId || `${v.hostId || ''}-${v.qid || ''}`;
+      const detectionId = v.detectionId || v.uniqueVulnId || '';
       const targets = [detectionId, v.hostIp, v.hostDns, v.title, v.os, v.solution, v.status, v.port, v.qid];
       const hasTextMatch = targets.some(value => value && String(value).toLowerCase().includes(quickSearch));
       const hasResultMatch = v.results && String(v.results).toUpperCase().includes(quickSearchUpper);
@@ -555,10 +555,11 @@ async function exportFiltered() {
     const severityLabel = { '5': 'Crítica', '4': 'Alta', '3': 'Média', '2': 'Baixa', '1': 'Info' };
     
     let csv = headers.join(',') + '\n';
-    
+
     currentData.filteredVulnerabilities.forEach(vuln => {
+      const detectionId = vuln.detectionId || vuln.uniqueVulnId || '';
       const row = [
-        vuln.uniqueVulnId || vuln.detectionId,
+        detectionId,
         vuln.hostDns,
         vuln.hostIp,
         vuln.os || '',
