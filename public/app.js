@@ -428,7 +428,9 @@ async function calculateEffectiveness() {
 
     const data = await response.json();
     if (!data.success) {
-      throw new Error(data.error || 'Erro ao calcular efetividade');
+      const message = data.message || data.error || 'Nenhum dado retornado para os Detection IDs informados.';
+      showMessage(message, 'warning');
+      return;
     }
 
     renderEffectiveness(data);
