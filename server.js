@@ -185,11 +185,12 @@ class QualysAPI {
     return parsedVulnerabilities.map(vuln => {
       const kb = kbDetails[vuln.qid] || {};
       const composedDetectionId = `${vuln.hostId || ''}-${vuln.qid || ''}`;
-      const normalizedUniqueId = vuln.uniqueVulnId || kb.uniqueVulnId || composedDetectionId;
+      const detectionId = vuln.detectionId || composedDetectionId;
+      const normalizedUniqueId = detectionId || vuln.uniqueVulnId || kb.uniqueVulnId || composedDetectionId;
 
       return {
         ...vuln,
-        detectionId: composedDetectionId,
+        detectionId,
         uniqueVulnId: normalizedUniqueId,
         title: vuln.title || kb.title || '',
         solution: vuln.solution || kb.solution || ''
@@ -336,11 +337,13 @@ class QualysAPI {
 
       detectionArray.forEach(detection => {
         const qid = detection.QID || '';
+        const detectionIdFromApi = detection.UNIQUE_VULN_ID || detection.VULN_INFO?.UNIQUE_VULN_ID || '';
         const composedId = `${hostId}-${qid}`;
-        const uniqueVulnId = detection.UNIQUE_VULN_ID || detection.VULN_INFO?.UNIQUE_VULN_ID || composedId;
+        const detectionId = detectionIdFromApi || composedId;
+        const uniqueVulnId = detectionIdFromApi || composedId;
 
         vulnerabilities.push({
-          detectionId: composedId,
+          detectionId,
           uniqueVulnId,
           hostId,
           hostIp: ip,
