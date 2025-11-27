@@ -47,10 +47,15 @@ const cache = {
     data: null,
     lastUpdate: null
   },
+  kb: {
+    data: {},
+    lastUpdate: null
+  },
   ttl: 300000
 };
 
-const MAX_KB_CONCURRENCY = 5;
+const MAX_KB_CONCURRENCY = 3;
+const KB_BATCH_SIZE = 30;
 
 const formatErrorMessage = (error) => {
   if (error.response) {
@@ -160,7 +165,22 @@ class QualysAPI {
   async buildVulnerabilitiesFromXml(xmlData) {
     const parsedVulnerabilities = await this.parseVulnerabilityXML(xmlData);
     const uniqueQids = new Set(parsedVulnerabilities.map(vuln => vuln.qid).filter(Boolean));
-    const kbDetails = await this.fetchKnowledgeBaseDetails(uniqueQids);
+
+    const now = Date.now();
+    const kbCacheValid = cache.kb.lastUpdate && now - cache.kb.lastUpdate < cache.ttl;
+    const cachedKbDetails = {};
+
+    if (kbCacheValid) {
+      uniqueQids.forEach(qid => {
+        if (cache.kb.data[qid]) {
+          cachedKbDetails[qid] = cache.kb.data[qid];
+        }
+      });
+    }
+
+    const missingQids = Array.from(uniqueQids).filter(qid => !cachedKbDetails[qid]);
+    const fetchedKbDetails = missingQids.length ? await this.fetchKnowledgeBaseDetails(missingQids) : {};
+    const kbDetails = { ...cachedKbDetails, ...fetchedKbDetails };
 
     return parsedVulnerabilities.map(vuln => {
       const kb = kbDetails[vuln.qid] || {};
@@ -372,38 +392,63 @@ class QualysAPI {
     return details;
   }
 
-  async fetchKnowledgeBaseDetails(qids, concurrency = MAX_KB_CONCURRENCY) {
+  async fetchKnowledgeBaseDetails(qids, concurrency = MAX_KB_CONCURRENCY, batchSize = KB_BATCH_SIZE) {
     const qidArray = Array.from(qids);
     const results = {};
+    const now = Date.now();
 
-    for (let i = 0; i < qidArray.length; i += concurrency) {
-      const batch = qidArray.slice(i, i + concurrency);
+    const kbCacheValid = cache.kb.lastUpdate && now - cache.kb.lastUpdate < cache.ttl;
+    if (!kbCacheValid) {
+      cache.kb.data = {};
+      cache.kb.lastUpdate = null;
+    }
 
-      const responses = await Promise.all(batch.map(async qid => {
+    qidArray.forEach(qid => {
+      if (kbCacheValid && cache.kb.data[qid]) {
+        results[qid] = cache.kb.data[qid];
+      }
+    });
+
+    const missingQids = qidArray.filter(qid => !results[qid]);
+    if (!missingQids.length) return results;
+
+    const batches = [];
+    for (let i = 0; i < missingQids.length; i += batchSize) {
+      batches.push(missingQids.slice(i, i + batchSize));
+    }
+
+    for (let i = 0; i < batches.length; i += concurrency) {
+      const batchGroup = batches.slice(i, i + concurrency);
+
+      const responses = await Promise.all(batchGroup.map(async batch => {
         try {
           const response = await qualysClient.get('/api/2.0/fo/knowledge_base/vuln/', {
             params: {
               action: 'list',
-              ids: qid
+              ids: batch.join(',')
             },
             timeout: 120000
           });
 
           const parsed = await this.parseKnowledgeBaseXML(response.data);
-          return { qid, details: parsed[qid] };
+          return parsed;
         } catch (error) {
-          console.warn(`Falha ao consultar QID ${qid}:`, formatErrorMessage(error));
-          return { qid, details: null };
+          console.warn(`Falha ao consultar QIDs ${batch.join(',')}:`, formatErrorMessage(error));
+          return {};
         }
       }));
 
-      responses.forEach(({ qid, details }) => {
-        if (details) {
-          results[qid] = details;
-        }
+      responses.forEach(parsed => {
+        Object.entries(parsed).forEach(([qid, details]) => {
+          if (details) {
+            results[qid] = details;
+            cache.kb.data[qid] = details;
+          }
+        });
       });
     }
 
+    cache.kb.lastUpdate = Date.now();
     return results;
   }
 
