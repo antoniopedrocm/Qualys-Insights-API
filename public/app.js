@@ -9,6 +9,18 @@ let currentData = {
   effectiveness: null
 };
 
+const EFFECTIVENESS_WINDOW_LABELS = {
+  DEV_QA: 'Desenvolvimento e Qualidade',
+  PRD_Baixa: 'Produção Baixa',
+  PRD_Alta: 'Produção Alta'
+};
+
+const EFFECTIVENESS_WINDOW_TAG_MATCHERS = {
+  DEV_QA: ['DEV_QA', 'DESENVOLVIMENTO_E_QUALIDADE', 'DESENVOLVIMENTO', 'QUALIDADE'],
+  PRD_Baixa: ['PRD_BAIXA', 'PRODUCAO_BAIXA', 'PRODUÇÃO_BAIXA'],
+  PRD_Alta: ['PRD_ALTA', 'PRODUCAO_ALTA', 'PRODUÇÃO_ALTA']
+};
+
 // Configurações globais do Chart.js para o tema escuro
 Chart.defaults.color = '#a0aec0';
 Chart.defaults.borderColor = '#1a223a';
@@ -82,6 +94,20 @@ function parseTags(tagString) {
     .split(/[,;|]/)
     .map(tag => tag.trim())
     .filter(Boolean);
+}
+
+function normalizeWindowTags(tags = '') {
+  return String(tags)
+    .toUpperCase()
+    .replace(/\s+/g, '_')
+    .replace(/\//g, '_');
+}
+
+function findWindowByTags(tags = '') {
+  const normalized = normalizeWindowTags(tags);
+  return Object.keys(EFFECTIVENESS_WINDOW_TAG_MATCHERS).find(windowKey =>
+    EFFECTIVENESS_WINDOW_TAG_MATCHERS[windowKey].some(tag => normalized.includes(tag))
+  );
 }
 
 function getOfficialDetectionId(vuln) {
@@ -314,11 +340,8 @@ function updateCharts(summary, trends) {
   });
 }
 
-function classifyWindowFront(severity) {
-  const sev = Number(severity) || 0;
-  if (sev >= 4) return 'PRD_Alta';
-  if (sev === 3) return 'PRD_Baixa';
-  return 'DEV_QA';
+function classifyWindowFront(detection = {}) {
+  return findWindowByTags(detection.hostTags || detection.tags || '') || null;
 }
 
 function buildStackedChart(chartKey, canvasId, label, data) {
@@ -362,11 +385,12 @@ function buildStackedChart(chartKey, canvasId, label, data) {
   });
 }
 
-function populateEffectivenessTable(detections) {
+function populateEffectivenessTable(detections, windowLabels = EFFECTIVENESS_WINDOW_LABELS) {
   const tbody = document.getElementById('efetividadeTableBody');
   const severityLabel = { '5': 'Crítica', '4': 'Alta', '3': 'Média', '2': 'Baixa', '1': 'Info' };
   tbody.innerHTML = detections.map(det => {
-    const windowName = classifyWindowFront(det.severity);
+    const windowKey = classifyWindowFront(det);
+    const windowName = windowLabels[windowKey] || 'Não classificado';
     return `
       <tr>
         <td>${det.detectionId || '-'}</td>
@@ -384,10 +408,20 @@ function populateEffectivenessTable(detections) {
 function renderEffectiveness(data) {
   currentData.effectiveness = data;
 
+  const windowLabels = { ...EFFECTIVENESS_WINDOW_LABELS, ...(data.windowLabels || {}) };
+  const baseWindowSummary = (key) => ({
+    label: windowLabels[key],
+    total: 0,
+    corrigidas: 0,
+    pendentes: 0,
+    efetividade: 0,
+    ...(data[key] || {})
+  });
+
   const summary = {
-    DEV_QA: data.DEV_QA || { total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 },
-    PRD_Baixa: data.PRD_Baixa || { total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 },
-    PRD_Alta: data.PRD_Alta || { total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 }
+    DEV_QA: baseWindowSummary('DEV_QA'),
+    PRD_Baixa: baseWindowSummary('PRD_Baixa'),
+    PRD_Alta: baseWindowSummary('PRD_Alta')
   };
 
   document.getElementById('efetividadeKpis').style.display = 'grid';
@@ -401,12 +435,12 @@ function renderEffectiveness(data) {
   document.getElementById('efetividadePrdAlta').textContent = `${summary.PRD_Alta.efetividade || 0}`;
   document.getElementById('efetividadePrdBaixa').textContent = `${summary.PRD_Baixa.efetividade || 0}`;
 
-  buildStackedChart('devQaEfetividade', 'devQaEfetividadeChart', 'DEV_QA', summary.DEV_QA);
-  buildStackedChart('prdBaixaEfetividade', 'prdBaixaEfetividadeChart', 'PRD_Baixa', summary.PRD_Baixa);
-  buildStackedChart('prdAltaEfetividade', 'prdAltaEfetividadeChart', 'PRD_Alta', summary.PRD_Alta);
+  buildStackedChart('devQaEfetividade', 'devQaEfetividadeChart', summary.DEV_QA.label || 'DEV_QA', summary.DEV_QA);
+  buildStackedChart('prdBaixaEfetividade', 'prdBaixaEfetividadeChart', summary.PRD_Baixa.label || 'PRD_Baixa', summary.PRD_Baixa);
+  buildStackedChart('prdAltaEfetividade', 'prdAltaEfetividadeChart', summary.PRD_Alta.label || 'PRD_Alta', summary.PRD_Alta);
 
   if (data.detections) {
-    populateEffectivenessTable(data.detections);
+    populateEffectivenessTable(data.detections, windowLabels);
   }
 }
 
