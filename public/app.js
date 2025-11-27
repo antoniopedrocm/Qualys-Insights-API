@@ -84,6 +84,10 @@ function parseTags(tagString) {
     .filter(Boolean);
 }
 
+function getOfficialDetectionId(vuln) {
+  return vuln.detectionId || vuln.uniqueVulnId || '';
+}
+
 function extractTagsFromVulns(vulnerabilities) {
   const tagSet = new Set();
   vulnerabilities.forEach(v => {
@@ -461,7 +465,7 @@ function displayVulnerabilities(vulns) {
   document.getElementById('vulnCount').textContent = vulns.length;
   document.getElementById('vulnTableBody').innerHTML = vulns.map(v => `
     <tr>
-      <td>${v.detectionId || v.uniqueVulnId || ''}</td>
+      <td>${getOfficialDetectionId(v)}</td>
       <td>${v.hostDns || ''}</td>
       <td>${v.hostIp || ''}</td>
       <td>${v.os || ''}</td>
@@ -504,8 +508,8 @@ function applyFilters() {
   // Busca rápida
   if (quickSearch) {
     filtered = filtered.filter(v => {
-      const detectionId = v.detectionId || v.uniqueVulnId || '';
-      const targets = [detectionId, v.hostIp, v.hostDns, v.title, v.os, v.solution, v.status, v.port, v.qid];
+      const officialDetectionId = getOfficialDetectionId(v);
+      const targets = [officialDetectionId, v.hostIp, v.hostDns, v.title, v.os, v.solution, v.status, v.port, v.qid];
       const hasTextMatch = targets.some(value => value && String(value).toLowerCase().includes(quickSearch));
       const hasResultMatch = v.results && String(v.results).toUpperCase().includes(quickSearchUpper);
       return hasTextMatch || hasResultMatch;
@@ -557,7 +561,7 @@ async function exportFiltered() {
     let csv = headers.join(',') + '\n';
 
     currentData.filteredVulnerabilities.forEach(vuln => {
-      const detectionId = vuln.detectionId || vuln.uniqueVulnId || '';
+      const detectionId = getOfficialDetectionId(vuln);
       const row = [
         detectionId,
         vuln.hostDns,
