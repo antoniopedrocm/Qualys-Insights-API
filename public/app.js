@@ -76,6 +76,13 @@ function showLoading(show) {
   document.getElementById('loadingIndicator').style.display = show ? 'block' : 'none';
 }
 
+function buildDetectionId(vuln) {
+  if (vuln.detectionId) return vuln.detectionId;
+  if (vuln.hostId && vuln.qid) return `${vuln.hostId}-${vuln.qid}`;
+  if (vuln.hostIp && vuln.qid) return `${vuln.hostIp}-${vuln.qid}`;
+  return `${vuln.qid || ''}`;
+}
+
 function parseTags(tagString) {
   if (!tagString) return [];
   return tagString
@@ -440,8 +447,12 @@ async function loadVulnerabilities() {
   try {
     showLoading(true);
     const data = await apiCall('/api/vulnerabilities');
-    currentData.vulnerabilities = data.data || [];
-    currentData.filteredVulnerabilities = data.data || [];
+    const normalizedVulns = (data.data || []).map(vuln => ({
+      ...vuln,
+      detectionId: buildDetectionId(vuln)
+    }));
+    currentData.vulnerabilities = normalizedVulns;
+    currentData.filteredVulnerabilities = normalizedVulns;
     currentData.availableTags = extractTagsFromVulns(currentData.vulnerabilities);
     populateTagFilter(currentData.availableTags);
     displayVulnerabilities(currentData.vulnerabilities);
@@ -461,7 +472,7 @@ function displayVulnerabilities(vulns) {
   document.getElementById('vulnCount').textContent = vulns.length;
   document.getElementById('vulnTableBody').innerHTML = vulns.map(v => `
     <tr>
-      <td>${v.detectionId || `${v.hostId || ''}-${v.qid || ''}`}</td>
+      <td>${buildDetectionId(v)}</td>
       <td>${v.hostDns || ''}</td>
       <td>${v.hostIp || ''}</td>
       <td>${v.os || ''}</td>
@@ -504,7 +515,7 @@ function applyFilters() {
   // Busca rápida
   if (quickSearch) {
     filtered = filtered.filter(v => {
-      const detectionId = v.detectionId || `${v.hostId || ''}-${v.qid || ''}`;
+      const detectionId = buildDetectionId(v);
       const targets = [detectionId, v.hostIp, v.hostDns, v.title, v.os, v.solution, v.status, v.port, v.qid];
       const hasTextMatch = targets.some(value => value && String(value).toLowerCase().includes(quickSearch));
       const hasResultMatch = v.results && String(v.results).toUpperCase().includes(quickSearchUpper);
@@ -558,7 +569,7 @@ async function exportFiltered() {
     
     currentData.filteredVulnerabilities.forEach(vuln => {
       const row = [
-        vuln.uniqueVulnId || vuln.detectionId,
+        vuln.uniqueVulnId || buildDetectionId(vuln),
         vuln.hostDns,
         vuln.hostIp,
         vuln.os || '',
