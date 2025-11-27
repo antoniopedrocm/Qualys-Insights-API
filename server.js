@@ -567,6 +567,22 @@ class QualysAPI {
 const qualysAPI = new QualysAPI();
 
 const detectionWindows = ['DEV_QA', 'PRD_Baixa', 'PRD_Alta'];
+const detectionWindowLabels = {
+  DEV_QA: 'Desenvolvimento e Qualidade',
+  PRD_Baixa: 'Produção Baixa',
+  PRD_Alta: 'Produção Alta'
+};
+
+const detectionWindowTagMatchers = {
+  DEV_QA: ['DEV_QA', 'DESENVOLVIMENTO_E_QUALIDADE', 'DESENVOLVIMENTO', 'QUALIDADE'],
+  PRD_Baixa: ['PRD_BAIXA', 'PRODUCAO_BAIXA', 'PRODUÇÃO_BAIXA'],
+  PRD_Alta: ['PRD_ALTA', 'PRODUCAO_ALTA', 'PRODUÇÃO_ALTA']
+};
+
+const normalizeTagString = (tags = '') => String(tags)
+  .toUpperCase()
+  .replace(/\s+/g, '_')
+  .replace(/\//g, '_');
 
 const readDetectionIdsFromCSV = async () => {
   const filePath = path.join(__dirname, 'detection_ids.csv');
@@ -598,11 +614,14 @@ const readDetectionIdsFromCSV = async () => {
   return detectionIds;
 };
 
-const classifyWindow = (detection) => {
-  const severity = Number(detection.severity) || 0;
-  if (severity >= 4) return 'PRD_Alta';
-  if (severity === 3) return 'PRD_Baixa';
-  return 'DEV_QA';
+const classifyWindow = (detection = {}) => {
+  const normalizedTags = normalizeTagString(detection.hostTags || detection.tags || '');
+
+  const matchedWindow = detectionWindows.find(window =>
+    detectionWindowTagMatchers[window].some(tag => normalizedTags.includes(tag))
+  );
+
+  return matchedWindow || null;
 };
 
 const normalizeStatus = (status = '') => status.trim().toLowerCase();
@@ -651,16 +670,20 @@ const buildDetectionsWorkbook = async (detections) => {
 };
 
 const buildEffectivenessSummary = (detections) => {
-  const summary = {
-    DEV_QA: { total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 },
-    PRD_Baixa: { total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 },
-    PRD_Alta: { total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 },
-    total_geral: 0
-  };
+  const summary = detectionWindows.reduce((acc, window) => {
+    acc[window] = {
+      label: detectionWindowLabels[window],
+      total: 0,
+      corrigidas: 0,
+      pendentes: 0,
+      efetividade: 0
+    };
+    return acc;
+  }, { total_geral: 0, windowLabels: { ...detectionWindowLabels } });
 
   detections.forEach(detection => {
     const window = classifyWindow(detection);
-    if (!detectionWindows.includes(window)) return;
+    if (!window || !detectionWindows.includes(window)) return;
 
     summary[window].total++;
     summary.total_geral++;
