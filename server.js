@@ -582,11 +582,14 @@ const readDetectionIdsFromCSV = async () => {
     throw new Error('Arquivo detection_ids.csv está vazio.');
   }
 
-  const [header, ...rows] = lines;
-  const detectionIds = rows
+  const normalizedLines = lines
     .map(id => id.replace(/"/g, '').trim())
-    .filter(id => id)
-    .filter(id => /^\d+$/.test(id));
+    .filter(Boolean);
+
+  const hasHeader = normalizedLines.length > 0 && !/^\d+$/.test(normalizedLines[0]);
+  const candidates = hasHeader ? normalizedLines.slice(1) : normalizedLines;
+
+  const detectionIds = candidates.filter(id => /^\d+$/.test(id));
 
   if (detectionIds.length === 0) {
     throw new Error('Nenhum Detection ID válido encontrado no arquivo detection_ids.csv.');
