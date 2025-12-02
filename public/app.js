@@ -55,6 +55,7 @@ function showTab(tabName) {
   } else if (tabName === 'efetividade') {
     pageTitle.textContent = 'Efetividade';
     refreshButton.style.display = 'none';
+    if (!currentData.effectiveness) calculateEffectiveness({ silent: true, force: false });
   } else if (tabName === 'hosts') {
     pageTitle.textContent = 'Inventário de Hosts';
     refreshButton.style.display = 'block';
@@ -444,7 +445,25 @@ function renderEffectiveness(data) {
   }
 }
 
-async function calculateEffectiveness() {
+function buildEmptyEffectivenessData(windowLabels = EFFECTIVENESS_WINDOW_LABELS) {
+  return {
+    total_geral: 0,
+    windowLabels,
+    DEV_QA: { label: windowLabels.DEV_QA, total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 },
+    PRD_Baixa: { label: windowLabels.PRD_Baixa, total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 },
+    PRD_Alta: { label: windowLabels.PRD_Alta, total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 },
+    detections: []
+  };
+}
+
+async function calculateEffectiveness(options = {}) {
+  const { silent = false, force = true } = options;
+
+  if (!force && currentData.effectiveness) {
+    renderEffectiveness(currentData.effectiveness);
+    return;
+  }
+
   try {
     showLoading(true);
     const response = await fetch('/efetividade/calcular', {
@@ -463,14 +482,16 @@ async function calculateEffectiveness() {
     const data = await response.json();
     if (!data.success) {
       const message = data.message || data.error || 'Nenhum dado retornado para os Detection IDs informados.';
-      showMessage(message, 'warning');
+      renderEffectiveness(buildEmptyEffectivenessData(data.windowLabels));
+      if (!silent) showMessage(message, 'warning');
       return;
     }
 
     renderEffectiveness(data);
-    showMessage('Efetividade calculada com sucesso!', 'success');
+    if (!silent) showMessage('Efetividade calculada com sucesso!', 'success');
   } catch (error) {
-    showMessage(error.message || 'Erro ao calcular efetividade', 'error');
+    renderEffectiveness(buildEmptyEffectivenessData());
+    if (!silent) showMessage(error.message || 'Erro ao calcular efetividade', 'error');
   } finally {
     showLoading(false);
   }
@@ -855,4 +876,5 @@ async function exportCSV() {
 // Carregar dashboard ao iniciar
 window.onload = () => {
   loadDashboard();
+  calculateEffectiveness({ silent: true });
 };
