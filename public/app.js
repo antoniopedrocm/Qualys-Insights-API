@@ -97,6 +97,29 @@ function parseTags(tagString) {
     .filter(Boolean);
 }
 
+function isQueuedResponse(response) {
+  if (!response || typeof response !== 'object') return false;
+  const hasQueueHints = response.retryAfterSeconds !== undefined || response.callsToFinish !== undefined || response.queued;
+  return response.success === false && hasQueueHints;
+}
+
+function buildQueueMessage(response) {
+  const retrySeconds = Number.isFinite(Number(response?.retryAfterSeconds))
+    ? Math.max(1, Math.round(Number(response.retryAfterSeconds)))
+    : null;
+  const retryText = retrySeconds
+    ? `Consulta em processamento, tente novamente em ${retrySeconds} segundos.`
+    : 'Consulta em processamento, tente novamente em breve.';
+  const cacheText = response?.data ? ' Exibindo dados em cache enquanto aguardamos a finalização.' : '';
+  return `${retryText}${cacheText}`;
+}
+
+function handleQueueResponse(response) {
+  if (!isQueuedResponse(response)) return false;
+  showMessage(buildQueueMessage(response), 'warning');
+  return true;
+}
+
 function normalizeWindowTags(tags = '') {
   return String(tags)
     .toUpperCase()
@@ -139,7 +162,19 @@ async function apiCall(endpoint, needsAuth = true) {
 
   // O endpoint agora é relativo (o browser sabe que é no mesmo host)
   const response = await fetch(endpoint, { headers });
-  const parsedBody = await response.json().catch(() => null);
+  const rawText = await response.text();
+
+  let parsedBody = null;
+  try {
+    parsedBody = rawText ? JSON.parse(rawText) : null;
+  } catch (parseError) {
+    parsedBody = rawText;
+  }
+
+  const isQueued = response.status === 503 && parsedBody?.success === false;
+  if (isQueued) {
+    return { ...parsedBody, queued: true, status: response.status };
+  }
 
   if (!response.ok) {
     const serverMessage = parsedBody?.message || parsedBody?.error;
@@ -153,28 +188,41 @@ async function apiCall(endpoint, needsAuth = true) {
 async function loadDashboard() {
   try {
     showLoading(true);
-    
+
     // Otimização: chama os dois endpoints em paralelo
     const [summary, trends] = await Promise.all([
       apiCall('/api/dashboard/summary'),
       apiCall('/api/dashboard/trends')
     ]);
 
-    if (!summary.success) throw new Error(summary.message);
-    if (!trends.success) throw new Error(trends.message);
+    const summaryQueued = isQueuedResponse(summary);
+    const trendsQueued = isQueuedResponse(trends);
+
+    const summaryData = summary?.data;
+    const trendsData = trends?.data;
+
+    if (!summaryData || !trendsData) {
+      const message = summary?.message || trends?.message || 'Dados do dashboard indisponíveis no momento.';
+      throw new Error(message);
+    }
 
     // Preenche KPIs
-    document.getElementById('totalHosts').textContent = summary.data.totalHosts;
-    document.getElementById('totalVulns').textContent = summary.data.totalVulnerabilities;
-    document.getElementById('criticalVulns').textContent = summary.data.severityDistribution.critical;
-    document.getElementById('highVulns').textContent = summary.data.severityDistribution.high;
-    document.getElementById('mediumVulns').textContent = summary.data.severityDistribution.medium;
+    document.getElementById('totalHosts').textContent = summaryData.totalHosts;
+    document.getElementById('totalVulns').textContent = summaryData.totalVulnerabilities;
+    document.getElementById('criticalVulns').textContent = summaryData.severityDistribution.critical;
+    document.getElementById('highVulns').textContent = summaryData.severityDistribution.high;
+    document.getElementById('mediumVulns').textContent = summaryData.severityDistribution.medium;
 
     // Atualiza Gráficos
-    updateCharts(summary.data, trends.data);
+    updateCharts(summaryData, trendsData);
 
     showLoading(false);
-    showMessage('Dashboard atualizado com sucesso!', 'success');
+    if (summaryQueued || trendsQueued) {
+      const queueReference = summaryQueued ? summary : trends;
+      showMessage(buildQueueMessage(queueReference), 'warning');
+    } else {
+      showMessage('Dashboard atualizado com sucesso!', 'success');
+    }
   } catch (error) {
     showLoading(false);
     showMessage('Erro ao carregar dashboard: ' + error.message, 'error');
@@ -501,6 +549,12 @@ async function loadVulnerabilities() {
   try {
     showLoading(true);
     const data = await apiCall('/api/vulnerabilities');
+    const queued = handleQueueResponse(data);
+
+    if (!Array.isArray(data?.data)) {
+      throw new Error(data?.message || data?.error || 'Não foi possível carregar vulnerabilidades no momento.');
+    }
+
     currentData.vulnerabilities = data.data || [];
     currentData.filteredVulnerabilities = data.data || [];
     currentData.availableTags = extractTagsFromVulns(currentData.vulnerabilities);
@@ -508,7 +562,9 @@ async function loadVulnerabilities() {
     displayVulnerabilities(currentData.vulnerabilities);
     document.getElementById('vulnTotal').textContent = currentData.vulnerabilities.length;
     showLoading(false);
-    showMessage('Vulnerabilidades carregadas!', 'success');
+    if (!queued) {
+      showMessage('Vulnerabilidades carregadas!', 'success');
+    }
   } catch (error) {
     showLoading(false);
     showMessage('Erro ao carregar vulnerabilidades: ' + error.message, 'error');
@@ -813,10 +869,11 @@ async function testApiEndpoint() {
   try {
     const endpoint = document.getElementById('apiEndpoint').value;
     const needsAuth = endpoint !== '/api/health';
-    
+
     apiResponse.textContent = `Executando ${endpoint}...`;
     const data = await apiCall(endpoint, needsAuth);
-    
+    handleQueueResponse(data);
+
     apiResponse.textContent = JSON.stringify(data, null, 2);
     showMessage('Endpoint executado com sucesso!', 'success');
   } catch (error) {
