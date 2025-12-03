@@ -71,6 +71,25 @@ const formatErrorMessage = (error) => {
   return error.message || 'Unknown error';
 };
 
+const isQualysQueueError = (error) => error?.name === 'QualysQueueError' || error?.code === '1960';
+
+const sendQueueResponse = (res, error, payload = {}) => {
+  const statusCode = 503;
+
+  if (error?.retryAfterSeconds) {
+    res.set('Retry-After', String(Math.max(1, Math.round(error.retryAfterSeconds))));
+  }
+
+  return res.status(statusCode).json({
+    success: false,
+    error: 'Qualys job ainda em execução',
+    message: error?.message || 'O Qualys ainda está processando a consulta.',
+    callsToFinish: error?.callsToFinish,
+    retryAfterSeconds: error?.retryAfterSeconds,
+    ...payload
+  });
+};
+
 const getCachedData = async (cacheEntry, fetchFunction) => {
   const now = Date.now();
   if (cacheEntry.data && cacheEntry.lastUpdate && now - cacheEntry.lastUpdate < cache.ttl) {
@@ -85,7 +104,7 @@ const getCachedData = async (cacheEntry, fetchFunction) => {
   } catch (error) {
     if (cacheEntry.data) {
       console.warn('Falha ao atualizar, retornando dados em cache:', error.message);
-      return { data: cacheEntry.data, cached: true, stale: true };
+      return { data: cacheEntry.data, cached: true, stale: true, error };
     }
     throw error;
   }
@@ -106,6 +125,27 @@ const qualysClient = axios.create({
 });
 
 class QualysAPI {
+  async parseQueueError(xmlData) {
+    if (!xmlData) return null;
+
+    try {
+      const parser = new xml2js.Parser({ explicitArray: false });
+      const parsed = await parser.parseStringPromise(xmlData);
+      const response = parsed?.SIMPLE_RETURN?.RESPONSE || parsed?.RESPONSE || parsed;
+
+      const code = response?.CODE ? String(response.CODE) : undefined;
+      const callsToFinishRaw = response?.CALLS_TO_FINISH || response?.CALL_TO_FINISH || response?.CALLS;
+      const callsToFinish = callsToFinishRaw !== undefined ? Number(callsToFinishRaw) : undefined;
+      const retryAfterSeconds = Number.isFinite(callsToFinish) ? callsToFinish * 30 : undefined;
+      const message = response?.TEXT || response?.ERROR || 'Qualys job still running. Try again later.';
+
+      return { code, callsToFinish, retryAfterSeconds, message };
+    } catch (parseError) {
+      console.warn('Não foi possível interpretar a resposta de fila do Qualys:', parseError.message);
+      return null;
+    }
+  }
+
   async getHostList() {
     try {
       const response = await qualysClient.get('/api/2.0/fo/asset/host/', {
@@ -140,6 +180,17 @@ class QualysAPI {
       console.error('Erro ao obter vulnerabilidades (Tentativa 1):', formattedError);
 
       if (error.response?.status === 409) {
+        const queueInfo = await this.parseQueueError(error.response?.data);
+
+        if (queueInfo?.code === '1960') {
+          const queueError = new Error(queueInfo.message || 'Qualys job ainda em execução');
+          queueError.name = 'QualysQueueError';
+          queueError.code = queueInfo.code;
+          queueError.callsToFinish = queueInfo.callsToFinish;
+          queueError.retryAfterSeconds = queueInfo.retryAfterSeconds;
+          throw queueError;
+        }
+
         console.log('Tentando com limite menor...');
         try {
           const response = await qualysClient.get('/api/2.0/fo/asset/host/vm/detection/', {
@@ -742,16 +793,28 @@ app.get('/api/hosts', auth, async (req, res) => {
 
 app.get('/api/vulnerabilities', auth, async (req, res) => {
   try {
-    const { data: vulnerabilities, cached, stale } = await getCachedData(cache.vulnerabilities, () => qualysAPI.getVulnerabilities());
+    const vulnResult = await getCachedData(cache.vulnerabilities, () => qualysAPI.getVulnerabilities());
+    const vulnerabilities = vulnResult?.data || [];
+    const queueWarning = isQualysQueueError(vulnResult?.error);
 
-    res.json({
+    const responsePayload = {
       success: true,
       total: vulnerabilities.length,
-      cached,
-      stale,
+      cached: vulnResult?.cached || false,
+      stale: vulnResult?.stale || false,
       data: vulnerabilities
-    });
+    };
+
+    if (queueWarning) {
+      return sendQueueResponse(res, vulnResult.error, responsePayload);
+    }
+
+    res.json(responsePayload);
   } catch (error) {
+    if (isQualysQueueError(error)) {
+      return sendQueueResponse(res, error);
+    }
+
     const message = formatErrorMessage(error);
     console.error('Erro em /api/vulnerabilities:', message);
     res.status(502).json({
@@ -786,6 +849,8 @@ app.get('/api/dashboard/summary', auth, async (req, res) => {
       getCachedData(cache.vulnerabilities, () => qualysAPI.getVulnerabilities()),
       getCachedData(cache.hosts, () => qualysAPI.getHostList())
     ]);
+
+    const queueWarning = isQualysQueueError(vulnResult?.error);
 
     const vulnerabilities = vulnResult?.data || [];
     const hosts = hostResult?.data || [];
@@ -844,8 +909,10 @@ app.get('/api/dashboard/summary', auth, async (req, res) => {
       .slice(0, 10)
       .map(([qid, count]) => ({ qid, count }));
     
-    res.json({
+    const responsePayload = {
       success: true,
+      cached: vulnResult?.cached || false,
+      stale: vulnResult?.stale || false,
       data: {
         totalHosts: hosts.length,
         totalVulnerabilities: relevantVulns.length,
@@ -861,8 +928,22 @@ app.get('/api/dashboard/summary', auth, async (req, res) => {
         tagDistribution: tagDistribution,
         lastUpdated: new Date().toISOString()
       }
-    });
+    };
+
+    if (queueWarning) {
+      return sendQueueResponse(res, vulnResult.error, {
+        cached: responsePayload.cached,
+        stale: responsePayload.stale,
+        data: responsePayload.data
+      });
+    }
+
+    res.json(responsePayload);
   } catch (error) {
+    if (isQualysQueueError(error)) {
+      return sendQueueResponse(res, error);
+    }
+
     console.error('Erro ao gerar resumo:', formatErrorMessage(error));
     res.status(500).json({
       success: false,
@@ -874,8 +955,9 @@ app.get('/api/dashboard/summary', auth, async (req, res) => {
 
 app.get('/api/dashboard/trends', auth, async (req, res) => {
   try {
-    const { data: vulnerabilities = [] } = await getCachedData(cache.vulnerabilities, () => qualysAPI.getVulnerabilities());
-    const relevantVulns = vulnerabilities.filter(vuln => ['3', '4', '5'].includes(String(vuln.severity)));
+    const vulnResult = await getCachedData(cache.vulnerabilities, () => qualysAPI.getVulnerabilities());
+    const queueWarning = isQualysQueueError(vulnResult?.error);
+    const relevantVulns = (vulnResult?.data || []).filter(vuln => ['3', '4', '5'].includes(String(vuln.severity)));
 
     const dateCount = {};
     relevantVulns.forEach(vuln => {
@@ -890,14 +972,30 @@ app.get('/api/dashboard/trends', auth, async (req, res) => {
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([date, count]) => ({ date, count }));
     
-    res.json({
+    const responsePayload = {
       success: true,
+      cached: vulnResult?.cached || false,
+      stale: vulnResult?.stale || false,
       data: {
         trends,
         totalDays: trends.length
       }
-    });
+    };
+
+    if (queueWarning) {
+      return sendQueueResponse(res, vulnResult.error, {
+        cached: responsePayload.cached,
+        stale: responsePayload.stale,
+        data: responsePayload.data
+      });
+    }
+
+    res.json(responsePayload);
   } catch (error) {
+    if (isQualysQueueError(error)) {
+      return sendQueueResponse(res, error);
+    }
+
     console.error('Erro em /api/dashboard/trends:', formatErrorMessage(error));
     res.status(500).json({
       success: false,
