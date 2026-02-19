@@ -588,3 +588,20 @@ tr:hover {
   overflow-y: auto;
   border: 1px solid var(--bg-dark-tertiary);
 }
+
+.effectiveness-input-card {
+  margin-bottom: 24px;
+}
+
+.effectiveness-textarea {
+  width: 100%;
+  min-height: 140px;
+  resize: vertical;
+  margin: 12px 0 14px;
+  padding: 14px;
+  border-radius: var(--border-radius);
+  border: 1px solid var(--bg-dark-tertiary);
+  background: var(--bg-dark-primary);
+  color: var(--text-light-primary);
+  font-family: var(--font-family);
+}
