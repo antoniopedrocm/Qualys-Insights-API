@@ -55,7 +55,7 @@ function showTab(tabName) {
   } else if (tabName === 'efetividade') {
     pageTitle.textContent = 'Efetividade';
     refreshButton.style.display = 'none';
-    if (!currentData.effectiveness) calculateEffectiveness({ silent: true, force: false });
+    if (!currentData.effectiveness) clearEffectivenessView();
   } else if (tabName === 'hosts') {
     pageTitle.textContent = 'Inventário de Hosts';
     refreshButton.style.display = 'block';
@@ -389,160 +389,175 @@ function updateCharts(summary, trends) {
   });
 }
 
-function classifyWindowFront(detection = {}) {
-  return findWindowByTags(detection.hostTags || detection.tags || '') || null;
+function parseDetectionIds(input = '') {
+  if (typeof input !== 'string') return [];
+  const tokens = input
+    .split(/[\n,;\s]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(tokens));
 }
 
-function buildStackedChart(chartKey, canvasId, label, data) {
-  if (charts[chartKey]) charts[chartKey].destroy();
-  const ctx = document.getElementById(canvasId).getContext('2d');
-  charts[chartKey] = new Chart(ctx, {
-    type: 'bar',
+function classifyDetectionIds(ids = [], activeSet = new Set()) {
+  const uniqueIds = Array.from(new Set(ids.map((id) => String(id).trim()).filter(Boolean)));
+  const items = uniqueIds.map((detectionId) => {
+    if (!/^\d+$/.test(detectionId)) {
+      return { detectionId, status: 'invalid' };
+    }
+
+    return {
+      detectionId,
+      status: activeSet.has(detectionId) ? 'open' : 'fixed'
+    };
+  });
+
+  return items.reduce((acc, item) => {
+    acc.total += 1;
+    if (item.status === 'open') acc.open += 1;
+    if (item.status === 'fixed') acc.fixed += 1;
+    if (item.status === 'invalid') acc.invalid += 1;
+    acc.items.push(item);
+    return acc;
+  }, { total: 0, fixed: 0, open: 0, invalid: 0, items: [] });
+}
+
+function clearEffectivenessView() {
+  document.getElementById('efetividadeKpis').style.display = 'none';
+  document.getElementById('efetividadeCharts').style.display = 'none';
+  document.getElementById('efetividadeTableWrapper').style.display = 'none';
+  document.getElementById('efetividadeTableBody').innerHTML = '';
+}
+
+function statusLabel(status) {
+  if (status === 'open') return 'Pendente';
+  if (status === 'fixed') return 'Corrigida';
+  return 'Inválida';
+}
+
+function statusClass(status) {
+  if (status === 'open') return 'severity-high';
+  if (status === 'fixed') return 'severity-low';
+  return 'severity-critical';
+}
+
+function buildEffectivenessCharts(data) {
+  if (charts.effectivenessDonut) charts.effectivenessDonut.destroy();
+  const donutCtx = document.getElementById('effectivenessDonutChart').getContext('2d');
+  charts.effectivenessDonut = new Chart(donutCtx, {
+    type: 'doughnut',
     data: {
-      labels: [label],
-      datasets: [
-        {
-          label: 'Corrigidas',
-          data: [data.corrigidas],
-          backgroundColor: '#2ecc71',
-          stack: 'stack'
-        },
-        {
-          label: 'Pendentes',
-          data: [data.pendentes],
-          backgroundColor: '#f1c40f',
-          stack: 'stack'
-        }
-      ]
+      labels: ['Corrigidas', 'Pendentes', 'Inválidas'],
+      datasets: [{
+        data: [data.fixed, data.open, data.invalid],
+        backgroundColor: ['#2ecc71', '#f1c40f', '#e63946'],
+        borderWidth: 0
+      }]
     },
     options: {
       responsive: true,
-      maintainAspectRatio: true,
+      maintainAspectRatio: false
+    }
+  });
+
+  if (charts.effectivenessBar) charts.effectivenessBar.destroy();
+  const barCtx = document.getElementById('effectivenessBarChart').getContext('2d');
+  charts.effectivenessBar = new Chart(barCtx, {
+    type: 'bar',
+    data: {
+      labels: ['Corrigidas', 'Pendentes', 'Inválidas'],
+      datasets: [{
+        data: [data.fixed, data.open, data.invalid],
+        backgroundColor: ['#2ecc71', '#f1c40f', '#e63946'],
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
       scales: {
-        x: { stacked: true, grid: { display: false } },
-        y: { stacked: true, beginAtZero: true, grid: { color: '#1a223a' } }
-      },
-      plugins: {
-        legend: { position: 'bottom' },
-        title: {
-          display: true,
-          text: `Total: ${data.total}`,
-          color: '#f0f4f8'
-        }
+        y: { beginAtZero: true, grid: { color: '#1a223a' } },
+        x: { grid: { display: false } }
       }
     }
   });
-}
-
-function populateEffectivenessTable(detections, windowLabels = EFFECTIVENESS_WINDOW_LABELS) {
-  const tbody = document.getElementById('efetividadeTableBody');
-  const severityLabel = { '5': 'Crítica', '4': 'Alta', '3': 'Média', '2': 'Baixa', '1': 'Info' };
-  tbody.innerHTML = detections.map(det => {
-    const windowKey = classifyWindowFront(det);
-    const windowName = windowLabels[windowKey] || 'Não classificado';
-    return `
-      <tr>
-        <td>${det.detectionId || '-'}</td>
-        <td>${det.status || '-'}</td>
-        <td>${severityLabel[det.severity] || det.severity || '-'}</td>
-        <td>${det.qid || '-'}</td>
-        <td>${det.host || '-'}</td>
-        <td>${det.lastFound ? det.lastFound.split('T')[0] : '-'}</td>
-        <td>${windowName}</td>
-      </tr>
-    `;
-  }).join('');
 }
 
 function renderEffectiveness(data) {
   currentData.effectiveness = data;
 
-  const windowLabels = { ...EFFECTIVENESS_WINDOW_LABELS, ...(data.windowLabels || {}) };
-  const baseWindowSummary = (key) => ({
-    label: windowLabels[key],
-    total: 0,
-    corrigidas: 0,
-    pendentes: 0,
-    efetividade: 0,
-    ...(data[key] || {})
-  });
-
-  const summary = {
-    DEV_QA: baseWindowSummary('DEV_QA'),
-    PRD_Baixa: baseWindowSummary('PRD_Baixa'),
-    PRD_Alta: baseWindowSummary('PRD_Alta')
-  };
-
   document.getElementById('efetividadeKpis').style.display = 'grid';
   document.getElementById('efetividadeCharts').style.display = 'grid';
-  document.getElementById('efetividadeTableWrapper').style.display = data.detections?.length ? 'block' : 'none';
-  document.getElementById('efetividadeTotalLabel').style.display = 'block';
+  document.getElementById('efetividadeTableWrapper').style.display = 'block';
 
-  document.getElementById('efetividadeTotal').textContent = data.total_geral || 0;
-  document.getElementById('efetividadeTotalInline').textContent = data.total_geral || 0;
-  document.getElementById('efetividadeDevQa').textContent = `${summary.DEV_QA.efetividade || 0}`;
-  document.getElementById('efetividadePrdAlta').textContent = `${summary.PRD_Alta.efetividade || 0}`;
-  document.getElementById('efetividadePrdBaixa').textContent = `${summary.PRD_Baixa.efetividade || 0}`;
+  document.getElementById('efetividadeTotal').textContent = data.total || 0;
+  document.getElementById('efetividadeFixed').textContent = data.fixed || 0;
+  document.getElementById('efetividadeOpen').textContent = data.open || 0;
+  document.getElementById('efetividadeInvalid').textContent = data.invalid || 0;
 
-  buildStackedChart('devQaEfetividade', 'devQaEfetividadeChart', summary.DEV_QA.label || 'DEV_QA', summary.DEV_QA);
-  buildStackedChart('prdBaixaEfetividade', 'prdBaixaEfetividadeChart', summary.PRD_Baixa.label || 'PRD_Baixa', summary.PRD_Baixa);
-  buildStackedChart('prdAltaEfetividade', 'prdAltaEfetividadeChart', summary.PRD_Alta.label || 'PRD_Alta', summary.PRD_Alta);
+  buildEffectivenessCharts(data);
 
-  if (data.detections) {
-    populateEffectivenessTable(data.detections, windowLabels);
-  }
+  document.getElementById('efetividadeTableBody').innerHTML = (data.items || []).map((item) => `
+    <tr>
+      <td>${item.detectionId}</td>
+      <td class="${statusClass(item.status)}">${statusLabel(item.status)}</td>
+      <td>${item.dns || '-'}</td>
+      <td>${item.ip || '-'}</td>
+      <td>${item.title || '-'}</td>
+      <td>${item.severity || '-'}</td>
+      <td>${item.solution || '-'}</td>
+    </tr>
+  `).join('');
 }
 
-function buildEmptyEffectivenessData(windowLabels = EFFECTIVENESS_WINDOW_LABELS) {
-  return {
-    total_geral: 0,
-    windowLabels,
-    DEV_QA: { label: windowLabels.DEV_QA, total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 },
-    PRD_Baixa: { label: windowLabels.PRD_Baixa, total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 },
-    PRD_Alta: { label: windowLabels.PRD_Alta, total: 0, corrigidas: 0, pendentes: 0, efetividade: 0 },
-    detections: []
-  };
-}
+async function analyzeEffectiveness() {
+  const input = document.getElementById('effectivenessInput').value;
+  const detectionIds = parseDetectionIds(input);
 
-async function calculateEffectiveness(options = {}) {
-  const { silent = false, force = true } = options;
-
-  if (!force && currentData.effectiveness) {
-    renderEffectiveness(currentData.effectiveness);
+  if (!detectionIds.length) {
+    showMessage('Informe ao menos um Detection ID para analisar.', 'warning');
     return;
   }
 
   try {
     showLoading(true);
-    const response = await fetch('/efetividade/calcular', {
+    const response = await fetch('/api/effectiveness', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Basic ' + btoa('admin:admin123')
-      }
+      },
+      body: JSON.stringify({ detectionIds })
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText || 'Erro ao calcular efetividade');
-    }
-
     const data = await response.json();
-    if (!data.success) {
-      const message = data.message || data.error || 'Nenhum dado retornado para os Detection IDs informados.';
-      renderEffectiveness(buildEmptyEffectivenessData(data.windowLabels));
-      if (!silent) showMessage(message, 'warning');
+
+    if (isQueuedResponse(data)) {
+      showMessage(buildQueueMessage(data), 'warning');
+      if (data.items) {
+        renderEffectiveness(data);
+      }
       return;
     }
 
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || data.error || 'Erro ao analisar efetividade.');
+    }
+
     renderEffectiveness(data);
-    if (!silent) showMessage('Efetividade calculada com sucesso!', 'success');
+    showMessage('Análise de efetividade concluída com sucesso!', 'success');
   } catch (error) {
-    renderEffectiveness(buildEmptyEffectivenessData());
-    if (!silent) showMessage(error.message || 'Erro ao calcular efetividade', 'error');
+    showMessage(error.message || 'Erro ao analisar efetividade.', 'error');
   } finally {
     showLoading(false);
   }
+}
+
+function clearEffectiveness() {
+  document.getElementById('effectivenessInput').value = '';
+  currentData.effectiveness = null;
+  clearEffectivenessView();
 }
 
 async function loadVulnerabilities() {
@@ -933,5 +948,5 @@ async function exportCSV() {
 // Carregar dashboard ao iniciar
 window.onload = () => {
   loadDashboard();
-  calculateEffectiveness({ silent: true });
+  clearEffectivenessView();
 };

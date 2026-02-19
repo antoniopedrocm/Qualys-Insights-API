@@ -7,6 +7,7 @@ const cors = require('cors');
 const basicAuth = require('express-basic-auth');
 const path = require('path');
 const fs = require('fs');
+const { parseDetectionIds, classifyDetectionIds } = require('./src/effectiveness');
 require('dotenv').config(); // Carrega variáveis de ambiente
 
 const app = express();
@@ -820,6 +821,78 @@ app.get('/api/vulnerabilities', auth, async (req, res) => {
     res.status(502).json({
       success: false,
       error: 'Erro ao buscar vulnerabilidades',
+      message
+    });
+  }
+});
+
+app.post('/api/effectiveness', auth, async (req, res) => {
+  try {
+    const inputDetectionIds = Array.isArray(req.body?.detectionIds)
+      ? req.body.detectionIds
+      : parseDetectionIds(String(req.body?.input || ''));
+
+    if (!inputDetectionIds.length) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nenhum Detection ID informado.',
+        message: 'Informe pelo menos um Detection ID para análise.'
+      });
+    }
+
+    const uniqueIds = Array.from(new Set(inputDetectionIds.map((id) => String(id).trim()).filter(Boolean)));
+    const vulnResult = await getCachedData(cache.vulnerabilities, () => qualysAPI.getVulnerabilities());
+    const vulnerabilities = vulnResult?.data || [];
+    const queueWarning = isQualysQueueError(vulnResult?.error);
+
+    const vulnerabilitiesById = new Map();
+    vulnerabilities.forEach((vuln) => {
+      const detectionId = String(vuln.detectionId || vuln.uniqueVulnId || '').trim();
+      if (detectionId && !vulnerabilitiesById.has(detectionId)) {
+        vulnerabilitiesById.set(detectionId, vuln);
+      }
+    });
+
+    const activeSet = new Set(vulnerabilitiesById.keys());
+    const classified = classifyDetectionIds(uniqueIds, activeSet);
+
+    const payload = {
+      success: true,
+      total: classified.total,
+      fixed: classified.fixed,
+      open: classified.open,
+      invalid: classified.invalid,
+      cached: vulnResult?.cached || false,
+      stale: vulnResult?.stale || false,
+      items: classified.items.map((item) => {
+        const vuln = vulnerabilitiesById.get(item.detectionId);
+        return {
+          detectionId: item.detectionId,
+          status: item.status,
+          dns: vuln?.hostDns || '',
+          ip: vuln?.hostIp || '',
+          title: vuln?.title || '',
+          severity: vuln?.severity || '',
+          solution: vuln?.solution || ''
+        };
+      })
+    };
+
+    if (queueWarning) {
+      return sendQueueResponse(res, vulnResult.error, payload);
+    }
+
+    return res.json(payload);
+  } catch (error) {
+    if (isQualysQueueError(error)) {
+      return sendQueueResponse(res, error);
+    }
+
+    const message = formatErrorMessage(error);
+    console.error('Erro em /api/effectiveness:', message);
+    return res.status(500).json({
+      success: false,
+      error: 'Erro ao calcular efetividade',
       message
     });
   }
