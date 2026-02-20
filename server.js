@@ -8,6 +8,8 @@ const basicAuth = require('express-basic-auth');
 const path = require('path');
 const fs = require('fs');
 const { parseDetectionIds, classifyDetectionIds } = require('./src/effectiveness');
+const { normalizeSeverity } = require('./src/severity');
+const { loadCache, upsertMany } = require('./src/cache/effectivenessCache');
 require('dotenv').config(); // Carrega variáveis de ambiente
 
 const app = express();
@@ -109,6 +111,24 @@ const getCachedData = async (cacheEntry, fetchFunction) => {
     }
     throw error;
   }
+};
+
+const parseHostTags = (hostTags) => {
+  if (Array.isArray(hostTags)) return hostTags.filter(Boolean);
+  if (!hostTags) return [];
+  return String(hostTags)
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+};
+
+const resolveLastSeen = (vuln, status, generatedAt, existingItem = null) => {
+  const explicitLastSeen = vuln?.lastSeen || vuln?.lastFound || vuln?.lastDetected || vuln?.lastTest || null;
+  if (explicitLastSeen) return explicitLastSeen;
+
+  if (status === 'open') return generatedAt;
+  if (status === 'fixed') return existingItem?.lastSeen || null;
+  return null;
 };
 
 const qualysClient = axios.create({
@@ -855,6 +875,55 @@ app.post('/api/effectiveness', auth, async (req, res) => {
 
     const activeSet = new Set(vulnerabilitiesById.keys());
     const classified = classifyDetectionIds(uniqueIds, activeSet);
+    const generatedAt = new Date().toISOString();
+    const existingCache = await loadCache();
+
+    const itemsToPersist = classified.items.map((item) => {
+      const vuln = vulnerabilitiesById.get(item.detectionId);
+      const existingItem = existingCache.itemsByDetectionId?.[item.detectionId] || null;
+
+      if (item.status === 'invalid') {
+        return {
+          detectionId: item.detectionId,
+          status: 'invalid',
+          dns: existingItem?.dns || '',
+          ip: existingItem?.ip || '',
+          title: existingItem?.title || '',
+          severity: existingItem?.severity || 'Info',
+          solution: existingItem?.solution || '',
+          hostTags: existingItem?.hostTags || [],
+          lastSeen: null
+        };
+      }
+
+      if (item.status === 'fixed') {
+        return {
+          detectionId: item.detectionId,
+          status: 'fixed',
+          dns: existingItem?.dns || vuln?.hostDns || '',
+          ip: existingItem?.ip || vuln?.hostIp || '',
+          title: existingItem?.title || vuln?.title || '',
+          severity: existingItem?.severity || normalizeSeverity(vuln?.severity),
+          solution: existingItem?.solution || vuln?.solution || '',
+          hostTags: existingItem?.hostTags || parseHostTags(vuln?.hostTags),
+          lastSeen: resolveLastSeen(vuln, 'fixed', generatedAt, existingItem)
+        };
+      }
+
+      return {
+        detectionId: item.detectionId,
+        status: 'open',
+        dns: vuln?.hostDns || existingItem?.dns || '',
+        ip: vuln?.hostIp || existingItem?.ip || '',
+        title: vuln?.title || existingItem?.title || '',
+        severity: normalizeSeverity(vuln?.severity || existingItem?.severity),
+        solution: vuln?.solution || existingItem?.solution || '',
+        hostTags: parseHostTags(vuln?.hostTags || existingItem?.hostTags),
+        lastSeen: resolveLastSeen(vuln, 'open', generatedAt, existingItem)
+      };
+    });
+
+    const persistedCache = await upsertMany(itemsToPersist, { generatedAt });
 
     const payload = {
       success: true,
@@ -864,17 +933,20 @@ app.post('/api/effectiveness', auth, async (req, res) => {
       invalid: classified.invalid,
       cached: vulnResult?.cached || false,
       stale: vulnResult?.stale || false,
-      items: classified.items.map((item) => {
-        const vuln = vulnerabilitiesById.get(item.detectionId);
-        return {
-          detectionId: item.detectionId,
-          status: item.status,
-          dns: vuln?.hostDns || '',
-          ip: vuln?.hostIp || '',
-          title: vuln?.title || '',
-          severity: vuln?.severity || '',
-          solution: vuln?.solution || ''
-        };
+      filters: {
+        severities: Array.from(new Set(itemsToPersist.map((item) => item.severity))).filter(Boolean),
+        hostTags: Array.from(new Set(itemsToPersist.flatMap((item) => item.hostTags || []))).filter(Boolean)
+      },
+      items: classified.items.map((item) => persistedCache.itemsByDetectionId[item.detectionId] || {
+        detectionId: item.detectionId,
+        status: item.status,
+        dns: '',
+        ip: '',
+        title: '',
+        severity: 'Info',
+        solution: '',
+        hostTags: [],
+        lastSeen: null
       })
     };
 
@@ -893,6 +965,24 @@ app.post('/api/effectiveness', auth, async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Erro ao calcular efetividade',
+      message
+    });
+  }
+});
+
+app.get('/api/effectiveness/cache', auth, async (req, res) => {
+  try {
+    const cacheData = await loadCache();
+    res.json({
+      success: true,
+      meta: cacheData.meta,
+      items: Object.values(cacheData.itemsByDetectionId || {})
+    });
+  } catch (error) {
+    const message = formatErrorMessage(error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao carregar cache de efetividade',
       message
     });
   }

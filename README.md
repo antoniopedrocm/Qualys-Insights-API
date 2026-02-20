@@ -20,11 +20,37 @@ Na aba **Efetividade** você pode:
   - **Pendentes**: ainda ativos no Qualys.
   - **Corrigidas**: não encontrados entre as detecções ativas.
   - **Inválidas**: IDs não numéricos.
-- Visualizar resumo, gráficos e tabela detalhada.
+- Visualizar resumo, gráficos (incluindo severidade x status e distribuição por severidade), filtros e tabela detalhada.
 
-### Endpoint usado pela tela
+### Cache local em arquivo único
 
-`POST /api/effectiveness`
+O backend persiste os dados enriquecidos da efetividade em:
+
+- `data/effectiveness-cache.json`
+
+Esse arquivo inclui `meta` e `itemsByDetectionId`, com os campos:
+
+- `detectionId`
+- `status` (`open`, `fixed`, `invalid`)
+- `dns`
+- `ip`
+- `title`
+- `severity` (normalizada em pt-BR)
+- `solution`
+- `hostTags` (array)
+- `lastSeen` (Última Visualização)
+
+Para limpar o cache, basta remover o arquivo:
+
+```bash
+rm -f data/effectiveness-cache.json
+```
+
+> Se o arquivo não existir, ele é criado automaticamente na próxima chamada do endpoint.
+
+### Endpoints da Efetividade
+
+#### `POST /api/effectiveness`
 
 Payload:
 
@@ -32,7 +58,7 @@ Payload:
 { "detectionIds": ["6385789118", "6385789120"] }
 ```
 
-Resposta:
+Resposta (resumo):
 
 ```json
 {
@@ -41,8 +67,24 @@ Resposta:
   "fixed": 1,
   "open": 1,
   "invalid": 0,
+  "filters": {
+    "severities": ["Crítica", "Alta", "Média"],
+    "hostTags": ["SAP", "PRD"]
+  },
   "items": [
-    { "detectionId": "6385789118", "status": "open", "dns": "...", "ip": "..." }
+    {
+      "detectionId": "6385789118",
+      "status": "open",
+      "dns": "gowsap36.pratika.br",
+      "ip": "10.62.3.36",
+      "severity": "Crítica",
+      "hostTags": ["SAP", "PRD", "Windows"],
+      "lastSeen": "2026-02-18T03:12:00.000Z"
+    }
   ]
 }
 ```
+
+#### `GET /api/effectiveness/cache`
+
+Retorna o conteúdo do cache persistido (`meta` + `items`).

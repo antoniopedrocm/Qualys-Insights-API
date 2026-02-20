@@ -425,6 +425,7 @@ function classifyDetectionIds(ids = [], activeSet = new Set()) {
 function clearEffectivenessView() {
   document.getElementById('efetividadeKpis').style.display = 'none';
   document.getElementById('efetividadeCharts').style.display = 'none';
+  document.getElementById('efetividadeFilterSection').style.display = 'none';
   document.getElementById('efetividadeTableWrapper').style.display = 'none';
   document.getElementById('efetividadeTableBody').innerHTML = '';
 }
@@ -441,7 +442,45 @@ function statusClass(status) {
   return 'severity-critical';
 }
 
-function buildEffectivenessCharts(data) {
+function formatLastSeen(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
+}
+
+function getEffectivenessFilteredItems(data) {
+  const selectedTag = document.getElementById('effectivenessTagFilter').value;
+  const dnsFilter = document.getElementById('effectivenessDnsFilter').value.toLowerCase().trim();
+  const severities = Array.from(document.querySelectorAll('.effectiveness-severity-filter:checked')).map((cb) => cb.value);
+
+  return (data.items || []).filter((item) => {
+    const byTag = !selectedTag || (item.hostTags || []).includes(selectedTag);
+    const byDns = !dnsFilter || String(item.dns || '').toLowerCase().includes(dnsFilter);
+    const bySeverity = severities.length === 0 || severities.includes(item.severity || 'Info');
+    return byTag && byDns && bySeverity;
+  });
+}
+
+function effectivenessSummary(items = []) {
+  return items.reduce((acc, item) => {
+    acc.total += 1;
+    if (item.status === 'open') acc.open += 1;
+    if (item.status === 'fixed') acc.fixed += 1;
+    if (item.status === 'invalid') acc.invalid += 1;
+    return acc;
+  }, { total: 0, open: 0, fixed: 0, invalid: 0 });
+}
+
+function buildEffectivenessCharts(data, items) {
+  const summary = effectivenessSummary(items);
+
   if (charts.effectivenessDonut) charts.effectivenessDonut.destroy();
   const donutCtx = document.getElementById('effectivenessDonutChart').getContext('2d');
   charts.effectivenessDonut = new Chart(donutCtx, {
@@ -449,15 +488,12 @@ function buildEffectivenessCharts(data) {
     data: {
       labels: ['Corrigidas', 'Pendentes', 'Inválidas'],
       datasets: [{
-        data: [data.fixed, data.open, data.invalid],
+        data: [summary.fixed, summary.open, summary.invalid],
         backgroundColor: ['#2ecc71', '#f1c40f', '#e63946'],
         borderWidth: 0
       }]
     },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false
-    }
+    options: { responsive: true, maintainAspectRatio: false }
   });
 
   if (charts.effectivenessBar) charts.effectivenessBar.destroy();
@@ -467,7 +503,7 @@ function buildEffectivenessCharts(data) {
     data: {
       labels: ['Corrigidas', 'Pendentes', 'Inválidas'],
       datasets: [{
-        data: [data.fixed, data.open, data.invalid],
+        data: [summary.fixed, summary.open, summary.invalid],
         backgroundColor: ['#2ecc71', '#f1c40f', '#e63946'],
         borderRadius: 4
       }]
@@ -476,29 +512,59 @@ function buildEffectivenessCharts(data) {
       responsive: true,
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
-      scales: {
-        y: { beginAtZero: true, grid: { color: '#1a223a' } },
-        x: { grid: { display: false } }
-      }
+      scales: { y: { beginAtZero: true, grid: { color: '#1a223a' } }, x: { grid: { display: false } } }
     }
+  });
+
+  const severities = ['Crítica', 'Alta', 'Média'];
+  const sevStatus = severities.map((severity) => {
+    const subset = items.filter((item) => item.severity === severity);
+    return {
+      open: subset.filter((item) => item.status === 'open').length,
+      fixed: subset.filter((item) => item.status === 'fixed').length
+    };
+  });
+
+  if (charts.effectivenessSeverityStatus) charts.effectivenessSeverityStatus.destroy();
+  const sevStatusCtx = document.getElementById('effectivenessSeverityStatusChart').getContext('2d');
+  charts.effectivenessSeverityStatus = new Chart(sevStatusCtx, {
+    type: 'bar',
+    data: {
+      labels: severities,
+      datasets: [
+        { label: 'Pendentes', data: sevStatus.map((v) => v.open), backgroundColor: '#f1c40f' },
+        { label: 'Corrigidas', data: sevStatus.map((v) => v.fixed), backgroundColor: '#2ecc71' }
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+  });
+
+  const severityDistribution = severities.map((severity) => items.filter((item) => item.severity === severity).length);
+  const others = items.filter((item) => !severities.includes(item.severity)).length;
+
+  if (charts.effectivenessSeverityDistribution) charts.effectivenessSeverityDistribution.destroy();
+  const sevDistCtx = document.getElementById('effectivenessSeverityDistributionChart').getContext('2d');
+  charts.effectivenessSeverityDistribution = new Chart(sevDistCtx, {
+    type: 'doughnut',
+    data: {
+      labels: others > 0 ? [...severities, 'Outros'] : severities,
+      datasets: [{
+        data: others > 0 ? [...severityDistribution, others] : severityDistribution,
+        backgroundColor: ['#e63946', '#ff8c42', '#f1c40f', '#6b7280']
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false }
   });
 }
 
-function renderEffectiveness(data) {
-  currentData.effectiveness = data;
+function populateEffectivenessFilters(data) {
+  const allTags = Array.from(new Set((data.items || []).flatMap((item) => item.hostTags || []))).sort();
+  const tagSelect = document.getElementById('effectivenessTagFilter');
+  tagSelect.innerHTML = '<option value="">Todas as Tags</option>' + allTags.map((tag) => `<option value="${tag}">${tag}</option>`).join('');
+}
 
-  document.getElementById('efetividadeKpis').style.display = 'grid';
-  document.getElementById('efetividadeCharts').style.display = 'grid';
-  document.getElementById('efetividadeTableWrapper').style.display = 'block';
-
-  document.getElementById('efetividadeTotal').textContent = data.total || 0;
-  document.getElementById('efetividadeFixed').textContent = data.fixed || 0;
-  document.getElementById('efetividadeOpen').textContent = data.open || 0;
-  document.getElementById('efetividadeInvalid').textContent = data.invalid || 0;
-
-  buildEffectivenessCharts(data);
-
-  document.getElementById('efetividadeTableBody').innerHTML = (data.items || []).map((item) => `
+function renderEffectivenessTable(items) {
+  document.getElementById('efetividadeTableBody').innerHTML = items.map((item) => `
     <tr>
       <td>${item.detectionId}</td>
       <td class="${statusClass(item.status)}">${statusLabel(item.status)}</td>
@@ -506,9 +572,47 @@ function renderEffectiveness(data) {
       <td>${item.ip || '-'}</td>
       <td>${item.title || '-'}</td>
       <td>${item.severity || '-'}</td>
+      <td>${formatLastSeen(item.lastSeen)}</td>
       <td>${item.solution || '-'}</td>
     </tr>
   `).join('');
+}
+
+function applyEffectivenessFilters() {
+  const data = currentData.effectiveness;
+  if (!data) return;
+
+  const filteredItems = getEffectivenessFilteredItems(data);
+  const summary = effectivenessSummary(filteredItems);
+
+  document.getElementById('efetividadeTotal').textContent = summary.total;
+  document.getElementById('efetividadeFixed').textContent = summary.fixed;
+  document.getElementById('efetividadeOpen').textContent = summary.open;
+  document.getElementById('efetividadeInvalid').textContent = summary.invalid;
+
+  buildEffectivenessCharts(data, filteredItems);
+  renderEffectivenessTable(filteredItems);
+}
+
+function clearEffectivenessFilters() {
+  document.getElementById('effectivenessTagFilter').value = '';
+  document.getElementById('effectivenessDnsFilter').value = '';
+  document.querySelectorAll('.effectiveness-severity-filter').forEach((checkbox) => {
+    checkbox.checked = true;
+  });
+  applyEffectivenessFilters();
+}
+
+function renderEffectiveness(data) {
+  currentData.effectiveness = data;
+
+  document.getElementById('efetividadeKpis').style.display = 'grid';
+  document.getElementById('efetividadeCharts').style.display = 'grid';
+  document.getElementById('efetividadeFilterSection').style.display = 'block';
+  document.getElementById('efetividadeTableWrapper').style.display = 'block';
+
+  populateEffectivenessFilters(data);
+  applyEffectivenessFilters();
 }
 
 async function analyzeEffectiveness() {
