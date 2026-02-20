@@ -268,6 +268,47 @@
               <canvas id="effectivenessBarChart"></canvas>
             </div>
           </div>
+          <div class="chart-container">
+            <h2>Severidade x Status</h2>
+            <div class="chart-wrapper">
+              <canvas id="effectivenessSeverityStatusChart"></canvas>
+            </div>
+          </div>
+          <div class="chart-container">
+            <h2>Distribuição por Severidade</h2>
+            <div class="chart-wrapper">
+              <canvas id="effectivenessSeverityDistributionChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="filter-section" id="efetividadeFilterSection" style="display: none;">
+          <h3>Filtros</h3>
+          <div class="filter-grid enhanced">
+            <div class="filter-card">
+              <div class="filter-card-title">Tags do Host</div>
+              <select id="effectivenessTagFilter" onchange="applyEffectivenessFilters()">
+                <option value="">Todas as Tags</option>
+              </select>
+            </div>
+            <div class="filter-card">
+              <div class="filter-card-title">DNS</div>
+              <input type="text" id="effectivenessDnsFilter" placeholder="Filtrar por DNS" oninput="applyEffectivenessFilters()">
+            </div>
+            <div class="filter-card severity-card">
+              <div class="filter-card-title">Severidade</div>
+              <div class="checkbox-group pill-group">
+                <label class="pill critical"><input type="checkbox" class="effectiveness-severity-filter" value="Crítica" checked onchange="applyEffectivenessFilters()"><span>Crítica</span></label>
+                <label class="pill high"><input type="checkbox" class="effectiveness-severity-filter" value="Alta" checked onchange="applyEffectivenessFilters()"><span>Alta</span></label>
+                <label class="pill medium"><input type="checkbox" class="effectiveness-severity-filter" value="Média" checked onchange="applyEffectivenessFilters()"><span>Média</span></label>
+                <label class="pill low"><input type="checkbox" class="effectiveness-severity-filter" value="Baixa" checked onchange="applyEffectivenessFilters()"><span>Baixa</span></label>
+                <label class="pill info"><input type="checkbox" class="effectiveness-severity-filter" value="Info" checked onchange="applyEffectivenessFilters()"><span>Info</span></label>
+              </div>
+            </div>
+          </div>
+          <div class="filter-actions">
+            <button class="btn btn-secondary" onclick="clearEffectivenessFilters()">🗑️ Limpar filtros</button>
+          </div>
         </div>
 
         <div class="chart-container" id="efetividadeTableWrapper" style="display: none;">
@@ -287,6 +328,7 @@
                   <th>IP</th>
                   <th>Título</th>
                   <th>Severidade</th>
+                  <th>Última Visualização</th>
                   <th>Solução</th>
                 </tr>
               </thead>
