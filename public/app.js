@@ -30,28 +30,27 @@ Chart.defaults.plugins.legend.labels.color = '#f0f4f8';
 function showTab(tabName) {
   document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-  
+
   document.getElementById(tabName).classList.add('active');
-  
-  // Encontra o botão correspondente e o ativa
+
   const activeButton = document.querySelector(`.tab-btn[onclick="showTab('${tabName}')"]`);
   if (activeButton) {
     activeButton.classList.add('active');
   }
 
-  // Atualiza o título da página
   const pageTitle = document.getElementById('pageTitle');
   const refreshButton = document.getElementById('refreshButton');
-  
+
   if (tabName === 'dashboard') {
     pageTitle.textContent = 'Dashboard Executivo';
     refreshButton.style.display = 'block';
     refreshButton.onclick = loadDashboard;
+    syncDashboardViewControls();
   } else if (tabName === 'vulnerabilities') {
     pageTitle.textContent = 'Análise de Vulnerabilidades';
     refreshButton.style.display = 'block';
     refreshButton.onclick = loadVulnerabilities;
-    if (currentData.vulnerabilities.length === 0) loadVulnerabilities(); // Carrega se vazio
+    if (currentData.vulnerabilities.length === 0) loadVulnerabilities();
   } else if (tabName === 'efetividade') {
     pageTitle.textContent = 'Efetividade';
     refreshButton.style.display = 'none';
@@ -60,15 +59,22 @@ function showTab(tabName) {
     pageTitle.textContent = 'Inventário de Hosts';
     refreshButton.style.display = 'block';
     refreshButton.onclick = loadHosts;
-    if (currentData.hosts.length === 0) loadHosts(); // Carrega se vazio
+    if (currentData.hosts.length === 0) loadHosts();
   } else if (tabName === 'scans') {
     pageTitle.textContent = 'Status dos Scans';
     refreshButton.style.display = 'block';
     refreshButton.onclick = loadScans;
-    if (currentData.scans.length === 0) loadScans(); // Carrega se vazio
+    if (currentData.scans.length === 0) loadScans();
   } else if (tabName === 'api') {
     pageTitle.textContent = 'API Explorer';
-    refreshButton.style.display = 'none'; // Esconde o botão de refresh
+    refreshButton.style.display = 'none';
+  }
+
+  if (tabName !== 'dashboard') {
+    const selector = document.getElementById('dashboardViewSelector');
+    if (selector) selector.style.display = 'none';
+    const dateFilter = document.getElementById('dashboardDateFilter');
+    if (dateFilter) dateFilter.style.display = 'none';
   }
 }
 
@@ -185,44 +191,194 @@ async function apiCall(endpoint, needsAuth = true) {
   return parsedBody;
 }
 
+const dashboardState = {
+  selectedView: 'geral',
+  startDate: '',
+  endDate: '',
+  vulnerabilities: []
+};
+
+function normalizeDateRange(start, end) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const defaultStart = new Date(today);
+  defaultStart.setDate(defaultStart.getDate() - 30);
+
+  const normalizedEnd = end ? new Date(`${end}T00:00:00`) : today;
+  const normalizedStart = start ? new Date(`${start}T00:00:00`) : defaultStart;
+
+  if (Number.isNaN(normalizedStart.getTime()) || Number.isNaN(normalizedEnd.getTime())) {
+    throw new Error('Informe datas válidas para o período.');
+  }
+
+  if (normalizedStart > normalizedEnd) {
+    throw new Error('Data inicial não pode ser maior que data final.');
+  }
+
+  return {
+    startDate: normalizedStart.toISOString().split('T')[0],
+    endDate: normalizedEnd.toISOString().split('T')[0]
+  };
+}
+
+function getDetectedAt(vuln) {
+  return vuln.detectedAt || (vuln.firstFound ? String(vuln.firstFound).split('T')[0] : '');
+}
+
+function filterByDate(vulnerabilities, start, end) {
+  const { startDate, endDate } = normalizeDateRange(start, end);
+  return vulnerabilities.filter((vuln) => {
+    const detectedAt = getDetectedAt(vuln);
+    return detectedAt && detectedAt >= startDate && detectedAt <= endDate;
+  });
+}
+
+function severityKey(vuln) {
+  const severity = String(vuln.severity || '').toUpperCase();
+  if (severity === 'CRITICAL' || severity === '5') return 'critical';
+  if (severity === 'HIGH' || severity === '4') return 'high';
+  return 'medium';
+}
+
+function calcKpis(vulnerabilitiesFiltradas) {
+  const hostIds = new Set();
+  const severityDistribution = { critical: 0, high: 0, medium: 0 };
+
+  vulnerabilitiesFiltradas.forEach((vuln) => {
+    const sev = severityKey(vuln);
+    severityDistribution[sev] += 1;
+    hostIds.add(vuln.hostId || vuln.hostIp || vuln.hostDns || 'unknown');
+  });
+
+  return {
+    totalHosts: hostIds.size,
+    totalVulnerabilities: vulnerabilitiesFiltradas.length,
+    severityDistribution
+  };
+}
+
+function calcChartSeries(vulnerabilitiesFiltradas) {
+  const qidCount = {};
+  const dateCount = {};
+  const tagDistribution = {
+    DEV_QA: { critical: 0, high: 0, medium: 0, total: 0 },
+    PRD_Baixa: { critical: 0, high: 0, medium: 0, total: 0 },
+    PRD_Alta: { critical: 0, high: 0, medium: 0, total: 0 }
+  };
+
+  vulnerabilitiesFiltradas.forEach((vuln) => {
+    const sev = severityKey(vuln);
+    const qid = vuln.qid || 'Unknown';
+    qidCount[qid] = (qidCount[qid] || 0) + 1;
+
+    const detectedAt = getDetectedAt(vuln);
+    if (detectedAt) dateCount[detectedAt] = (dateCount[detectedAt] || 0) + 1;
+
+    const windowKey = findWindowByTags(vuln.hostTags || '');
+    if (windowKey) {
+      tagDistribution[windowKey][sev] += 1;
+      tagDistribution[windowKey].total += 1;
+    }
+  });
+
+  return {
+    topVulnerabilities: Object.entries(qidCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([qid, count]) => ({ qid, count })),
+    trends: Object.entries(dateCount)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, count]) => ({ date, count })),
+    tagDistribution
+  };
+}
+
+function renderDashboardWithView() {
+  const source = dashboardState.vulnerabilities;
+  const filtered = dashboardState.selectedView === 'detalhada'
+    ? filterByDate(source, dashboardState.startDate, dashboardState.endDate)
+    : source;
+
+  const kpis = calcKpis(filtered);
+  const chartSeries = calcChartSeries(filtered);
+
+  document.getElementById('totalHosts').textContent = kpis.totalHosts;
+  document.getElementById('totalVulns').textContent = kpis.totalVulnerabilities;
+  document.getElementById('criticalVulns').textContent = kpis.severityDistribution.critical;
+  document.getElementById('highVulns').textContent = kpis.severityDistribution.high;
+  document.getElementById('mediumVulns').textContent = kpis.severityDistribution.medium;
+
+  updateCharts({ ...kpis, ...chartSeries }, { trends: chartSeries.trends });
+}
+
+function syncDashboardViewControls() {
+  const isDetalhada = dashboardState.selectedView === 'detalhada';
+  const selector = document.getElementById('dashboardViewSelector');
+  const dateFilter = document.getElementById('dashboardDateFilter');
+  const geralBtn = document.getElementById('viewGeralBtn');
+  const detalhadaBtn = document.getElementById('viewDetalhadaBtn');
+
+  if (selector) selector.style.display = document.getElementById('dashboard').classList.contains('active') ? 'inline-flex' : 'none';
+  if (dateFilter) dateFilter.style.display = isDetalhada ? 'block' : 'none';
+  if (geralBtn) {
+    geralBtn.classList.toggle('active', !isDetalhada);
+    geralBtn.setAttribute('aria-selected', String(!isDetalhada));
+  }
+  if (detalhadaBtn) {
+    detalhadaBtn.classList.toggle('active', isDetalhada);
+    detalhadaBtn.setAttribute('aria-selected', String(isDetalhada));
+  }
+}
+
+function setDashboardView(view) {
+  dashboardState.selectedView = view === 'detalhada' ? 'detalhada' : 'geral';
+  syncDashboardViewControls();
+  renderDashboardWithView();
+}
+
+function handleDashboardDateChange() {
+  const startInput = document.getElementById('dashboardStartDate');
+  const endInput = document.getElementById('dashboardEndDate');
+
+  try {
+    const normalized = normalizeDateRange(startInput.value, endInput.value);
+    dashboardState.startDate = normalized.startDate;
+    dashboardState.endDate = normalized.endDate;
+    startInput.value = normalized.startDate;
+    endInput.value = normalized.endDate;
+    renderDashboardWithView();
+  } catch (error) {
+    showMessage(error.message, 'error');
+  }
+}
+
 async function loadDashboard() {
   try {
     showLoading(true);
 
-    // Otimização: chama os dois endpoints em paralelo
-    const [summary, trends] = await Promise.all([
-      apiCall('/api/dashboard/summary'),
-      apiCall('/api/dashboard/trends')
-    ]);
+    const vulnerabilitiesResponse = await apiCall('/api/vulnerabilities');
+    const queued = handleQueueResponse(vulnerabilitiesResponse);
 
-    const summaryQueued = isQueuedResponse(summary);
-    const trendsQueued = isQueuedResponse(trends);
-
-    const summaryData = summary?.data;
-    const trendsData = trends?.data;
-
-    if (!summaryData || !trendsData) {
-      const message = summary?.message || trends?.message || 'Dados do dashboard indisponíveis no momento.';
-      throw new Error(message);
+    if (!Array.isArray(vulnerabilitiesResponse?.data)) {
+      throw new Error(vulnerabilitiesResponse?.message || 'Dados do dashboard indisponíveis no momento.');
     }
 
-    // Preenche KPIs
-    document.getElementById('totalHosts').textContent = summaryData.totalHosts;
-    document.getElementById('totalVulns').textContent = summaryData.totalVulnerabilities;
-    document.getElementById('criticalVulns').textContent = summaryData.severityDistribution.critical;
-    document.getElementById('highVulns').textContent = summaryData.severityDistribution.high;
-    document.getElementById('mediumVulns').textContent = summaryData.severityDistribution.medium;
+    dashboardState.vulnerabilities = vulnerabilitiesResponse.data.filter((v) => ['3', '4', '5', 'CRITICAL', 'HIGH', 'MEDIUM'].includes(String(v.severity).toUpperCase()));
 
-    // Atualiza Gráficos
-    updateCharts(summaryData, trendsData);
+    const startInput = document.getElementById('dashboardStartDate');
+    const endInput = document.getElementById('dashboardEndDate');
+    const normalized = normalizeDateRange(startInput.value, endInput.value);
+    dashboardState.startDate = normalized.startDate;
+    dashboardState.endDate = normalized.endDate;
+    startInput.value = normalized.startDate;
+    endInput.value = normalized.endDate;
+
+    syncDashboardViewControls();
+    renderDashboardWithView();
 
     showLoading(false);
-    if (summaryQueued || trendsQueued) {
-      const queueReference = summaryQueued ? summary : trends;
-      showMessage(buildQueueMessage(queueReference), 'warning');
-    } else {
-      showMessage('Dashboard atualizado com sucesso!', 'success');
-    }
+    if (!queued) showMessage('Dashboard atualizado com sucesso!', 'success');
   } catch (error) {
     showLoading(false);
     showMessage('Erro ao carregar dashboard: ' + error.message, 'error');
@@ -1051,6 +1207,7 @@ async function exportCSV() {
 
 // Carregar dashboard ao iniciar
 window.onload = () => {
+  syncDashboardViewControls();
   loadDashboard();
   clearEffectivenessView();
 };
