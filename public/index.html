@@ -28,7 +28,13 @@
     <!-- Conteúdo Principal -->
     <main class="main-content">
       <header class="main-header">
-        <h2 id="pageTitle">Dashboard Executivo</h2>
+        <div class="header-title-group">
+          <h2 id="pageTitle">Dashboard Executivo</h2>
+          <div id="dashboardViewSelector" class="dashboard-view-selector" role="tablist" aria-label="Selecionar visão do dashboard">
+            <button id="viewGeralBtn" class="view-option active" role="tab" aria-selected="true" onclick="setDashboardView('geral')">Visão Geral</button>
+            <button id="viewDetalhadaBtn" class="view-option" role="tab" aria-selected="false" onclick="setDashboardView('detalhada')">Visão Detalhada</button>
+          </div>
+        </div>
         <div class="header-actions">
           <button class="btn" id="refreshButton" onclick="loadDashboard()">🔄 Atualizar</button>
           <button class="btn btn-secondary" onclick="exportExcel()">📊 Exportar Excel</button>
@@ -68,6 +74,19 @@
           <div class="stat-card sev-medium">
             <h3>Médias</h3>
             <div class="value" id="mediumVulns">-</div>
+          </div>
+        </div>
+
+        <div id="dashboardDateFilter" class="filter-section dashboard-date-filter" style="display:none;">
+          <div class="filter-grid">
+            <div class="filter-item">
+              <label for="dashboardStartDate">Período (data de detecção) - Data Inicial</label>
+              <input type="date" id="dashboardStartDate" onchange="handleDashboardDateChange()">
+            </div>
+            <div class="filter-item">
+              <label for="dashboardEndDate">Data Final</label>
+              <input type="date" id="dashboardEndDate" onchange="handleDashboardDateChange()">
+            </div>
           </div>
         </div>
 
