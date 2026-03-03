@@ -184,15 +184,27 @@ class QualysAPI {
   }
 
   async getVulnerabilities() {
+    const buildDetectionQuery = (truncationLimit) => ({
+      action: 'list',
+      truncation_limit: String(truncationLimit),
+      status: 'New,Active,Re-Opened,Fixed',
+      output_format: 'XML',
+      show_tags: '1'
+    });
+
+    const hasFixedExclusion = (params = {}) => {
+      const serialized = JSON.stringify(params).toLowerCase();
+      return serialized.includes('exclude_fixed') || serialized.includes('excludedvulnerabilities') || serialized.includes('!=fixed');
+    };
+
     try {
+      const params = buildDetectionQuery(1000);
+      console.log('[QualysAPI] Query host/vm/detection:', params);
+      if (hasFixedExclusion(params)) {
+        console.error('[QualysAPI] ERRO: Query contém exclusão de FIXED:', params);
+      }
       const response = await qualysClient.get('/api/2.0/fo/asset/host/vm/detection/', {
-        params: {
-          action: 'list',
-          truncation_limit: '1000',
-          status: 'New,Active,Re-Opened',
-          output_format: 'XML',
-          show_tags: '1'
-        },
+        params,
         timeout: 120000
       });
       return await this.buildVulnerabilitiesFromXml(response.data);
@@ -214,16 +226,15 @@ class QualysAPI {
 
         console.log('Tentando com limite menor...');
         try {
+          const params = buildDetectionQuery(500);
+          console.log('[QualysAPI] Query host/vm/detection (retry):', params);
+          if (hasFixedExclusion(params)) {
+            console.error('[QualysAPI] ERRO: Query de retry contém exclusão de FIXED:', params);
+          }
           const response = await qualysClient.get('/api/2.0/fo/asset/host/vm/detection/', {
-            params: {
-              action: 'list',
-              truncation_limit: '500',
-              status: 'New,Active,Re-Opened',
-              output_format: 'XML',
-              show_tags: '1'
-          },
-          timeout: 120000
-        });
+            params,
+            timeout: 120000
+          });
           return await this.buildVulnerabilitiesFromXml(response.data);
         } catch (retryError) {
           console.error('Erro na segunda tentativa:', retryError.message);
@@ -411,6 +422,8 @@ class QualysAPI {
         const detectionIdFromApi = detection.UNIQUE_VULN_ID || detection.VULN_INFO?.UNIQUE_VULN_ID || '';
         const detectionId = detectionIdFromApi;
         const uniqueVulnId = detectionIdFromApi;
+        const detectionStatus = getDetectionStatusValue(detection);
+        const isFixed = isDetectionFixed(detection);
 
         vulnerabilities.push({
           detectionId,
@@ -423,7 +436,11 @@ class QualysAPI {
           qid,
           type: detection.TYPE || '',
           severity: detection.SEVERITY || '',
-          status: detection.STATUS || '',
+          status: detectionStatus,
+          detectionStatus,
+          findingStatus: detection.FINDING_STATUS || '',
+          state: detection.STATE || '',
+          isFixed,
           firstFound: detection.FIRST_FOUND_DATETIME || '',
           lastFound: detection.LAST_FOUND_DATETIME || '',
           port: detection.PORT || '',
@@ -698,6 +715,39 @@ const classifyWindow = (detection = {}) => {
 
 const normalizeStatus = (status = '') => status.trim().toLowerCase();
 
+const getDetectionStatusValue = (item = {}) => {
+  const statusCandidates = [
+    item.status,
+    item.STATUS,
+    item.state,
+    item.STATE,
+    item.detectionStatus,
+    item.DETECTION_STATUS,
+    item.findingStatus,
+    item.FINDING_STATUS
+  ];
+
+  const firstStatus = statusCandidates.find((value) => value !== undefined && value !== null && String(value).trim() !== '');
+
+  if (firstStatus !== undefined) {
+    return String(firstStatus).trim();
+  }
+
+  const isFixedCandidates = [item.isFixed, item.IS_FIXED, item.fixed, item.FIXED];
+  const fixedCandidate = isFixedCandidates.find((value) => value !== undefined && value !== null);
+
+  if (fixedCandidate !== undefined) {
+    const normalized = String(fixedCandidate).trim().toLowerCase();
+    if (['true', '1', 'yes', 'sim'].includes(normalized)) return 'Fixed';
+    if (['false', '0', 'no', 'nao', 'não'].includes(normalized)) return 'Active';
+    if (typeof fixedCandidate === 'boolean') return fixedCandidate ? 'Fixed' : 'Active';
+  }
+
+  return '';
+};
+
+const isDetectionFixed = (item = {}) => normalizeStatus(getDetectionStatusValue(item)) === 'fixed';
+
 const buildDetectionsCsv = (detections) => {
   const headers = ['hostIp', 'hostDns', 'hostTags', 'os', 'qid', 'severity', 'status', 'firstFound', 'lastFound', 'title', 'solution'];
 
@@ -818,6 +868,10 @@ app.get('/api/vulnerabilities', auth, async (req, res) => {
     const vulnerabilities = vulnResult?.data || [];
     const queueWarning = isQualysQueueError(vulnResult?.error);
 
+    const totalFixed = vulnerabilities.filter((vuln) => isDetectionFixed(vuln) || vuln.isFixed === true).length;
+    const totalOpen = vulnerabilities.length - totalFixed;
+    console.log(`[QualysAPI] Contagem de vulnerabilidades -> total_fixed=${totalFixed}, total_open=${totalOpen}`);
+
     const responsePayload = {
       success: true,
       total: vulnerabilities.length,
@@ -873,7 +927,11 @@ app.post('/api/effectiveness', auth, async (req, res) => {
       }
     });
 
-    const activeSet = new Set(vulnerabilitiesById.keys());
+    const activeSet = new Set(
+      Array.from(vulnerabilitiesById.entries())
+        .filter(([, vuln]) => !isDetectionFixed(vuln) && vuln?.isFixed !== true)
+        .map(([detectionId]) => detectionId)
+    );
     const classified = classifyDetectionIds(uniqueIds, activeSet);
     const generatedAt = new Date().toISOString();
     const existingCache = await loadCache();
@@ -1023,45 +1081,46 @@ app.get('/api/dashboard/summary', auth, async (req, res) => {
     const qidCount = {};
     const statusCount = {};
     
+    const emptySeverityGroup = () => ({ abertas: 0, corrigidas: 0 });
     const tagDistribution = {
-      DEV_QA: { critical: 0, high: 0, medium: 0, total: 0 },
-      PRD_Baixa: { critical: 0, high: 0, medium: 0, total: 0 },
-      PRD_Alta: { critical: 0, high: 0, medium: 0, total: 0 }
+      DEV_QA: { critical: emptySeverityGroup(), high: emptySeverityGroup(), medium: emptySeverityGroup(), total: 0 },
+      PRD_Baixa: { critical: emptySeverityGroup(), high: emptySeverityGroup(), medium: emptySeverityGroup(), total: 0 },
+      PRD_Alta: { critical: emptySeverityGroup(), high: emptySeverityGroup(), medium: emptySeverityGroup(), total: 0 }
     };
-    
+
     relevantVulns.forEach(vuln => {
-      const severity = vuln.severity || '0';
-      if (severityCount[severity] !== undefined) {
-        severityCount[severity]++;
-      }
-      
+      const severity = String(vuln.severity || '0').toUpperCase();
+      const severityKey = severity === '5' || severity === 'CRITICAL'
+        ? 'critical'
+        : severity === '4' || severity === 'HIGH'
+          ? 'high'
+          : 'medium';
+
+      const normalizedSeverity = severityKey === 'critical' ? '5' : severityKey === 'high' ? '4' : '3';
+      severityCount[normalizedSeverity]++;
+
       const qid = vuln.qid || 'Unknown';
       qidCount[qid] = (qidCount[qid] || 0) + 1;
-      
-      const status = vuln.status || 'Unknown';
+
+      const status = getDetectionStatusValue(vuln) || 'Unknown';
       statusCount[status] = (statusCount[status] || 0) + 1;
-      
-      if (vuln.hostTags && ['3', '4', '5'].includes(severity)) {
+
+      if (vuln.hostTags && ['3', '4', '5', 'CRITICAL', 'HIGH', 'MEDIUM'].includes(severity)) {
         const tags = vuln.hostTags.toUpperCase().replace(/\s/g, '_');
-        
+        const statusBucket = isDetectionFixed(vuln) || vuln.isFixed === true ? 'corrigidas' : 'abertas';
+
         if (tags.includes('DEV_QA')) {
-          if (severity === '5') tagDistribution.DEV_QA.critical++;
-          if (severity === '4') tagDistribution.DEV_QA.high++;
-          if (severity === '3') tagDistribution.DEV_QA.medium++;
+          tagDistribution.DEV_QA[severityKey][statusBucket]++;
           tagDistribution.DEV_QA.total++;
         }
-        
+
         if (tags.includes('PRD_BAIXA')) {
-          if (severity === '5') tagDistribution.PRD_Baixa.critical++;
-          if (severity === '4') tagDistribution.PRD_Baixa.high++;
-          if (severity === '3') tagDistribution.PRD_Baixa.medium++;
+          tagDistribution.PRD_Baixa[severityKey][statusBucket]++;
           tagDistribution.PRD_Baixa.total++;
         }
-        
+
         if (tags.includes('PRD_ALTA')) {
-          if (severity === '5') tagDistribution.PRD_Alta.critical++;
-          if (severity === '4') tagDistribution.PRD_Alta.high++;
-          if (severity === '3') tagDistribution.PRD_Alta.medium++;
+          tagDistribution.PRD_Alta[severityKey][statusBucket]++;
           tagDistribution.PRD_Alta.total++;
         }
       }

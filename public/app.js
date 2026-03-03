@@ -258,13 +258,30 @@ function calcKpis(vulnerabilitiesFiltradas) {
   };
 }
 
+function getStatusValue(vuln) {
+  return String(
+    vuln.status
+    || vuln.detectionStatus
+    || vuln.findingStatus
+    || vuln.state
+    || ''
+  ).trim().toUpperCase();
+}
+
+function isFixedVuln(vuln) {
+  if (typeof vuln.isFixed === 'boolean') return vuln.isFixed;
+  const status = getStatusValue(vuln);
+  return status === 'FIXED';
+}
+
 function calcChartSeries(vulnerabilitiesFiltradas) {
   const qidCount = {};
   const dateCount = {};
+  const emptyBucket = () => ({ abertas: 0, corrigidas: 0 });
   const tagDistribution = {
-    DEV_QA: { critical: 0, high: 0, medium: 0, total: 0 },
-    PRD_Baixa: { critical: 0, high: 0, medium: 0, total: 0 },
-    PRD_Alta: { critical: 0, high: 0, medium: 0, total: 0 }
+    DEV_QA: { critical: emptyBucket(), high: emptyBucket(), medium: emptyBucket(), total: 0 },
+    PRD_Baixa: { critical: emptyBucket(), high: emptyBucket(), medium: emptyBucket(), total: 0 },
+    PRD_Alta: { critical: emptyBucket(), high: emptyBucket(), medium: emptyBucket(), total: 0 }
   };
 
   vulnerabilitiesFiltradas.forEach((vuln) => {
@@ -277,7 +294,8 @@ function calcChartSeries(vulnerabilitiesFiltradas) {
 
     const windowKey = findWindowByTags(vuln.hostTags || '');
     if (windowKey) {
-      tagDistribution[windowKey][sev] += 1;
+      const statusBucket = isFixedVuln(vuln) ? 'corrigidas' : 'abertas';
+      tagDistribution[windowKey][sev][statusBucket] += 1;
       tagDistribution[windowKey].total += 1;
     }
   });
@@ -441,17 +459,17 @@ function updateCharts(summary, trends) {
   const barChartOptions = (title) => ({
     responsive: true,
     maintainAspectRatio: true,
-    plugins: { 
-      legend: { display: false },
-      title: { 
-        display: true, 
+    plugins: {
+      legend: { display: true, labels: { color: '#f0f4f8' } },
+      title: {
+        display: true,
         text: title,
         color: '#f0f4f8'
       }
     },
-    scales: { 
-      y: { beginAtZero: true, grid: { color: '#1a223a' } },
-      x: { grid: { display: false } }
+    scales: {
+      x: { stacked: true, grid: { display: false } },
+      y: { stacked: true, beginAtZero: true, grid: { color: '#1a223a' } }
     }
   });
 
@@ -462,15 +480,28 @@ function updateCharts(summary, trends) {
     type: 'bar',
     data: {
       labels: ['Crítica', 'Alta', 'Média'],
-      datasets: [{
-        label: 'Vulnerabilidades',
-        data: [
-          summary.tagDistribution?.DEV_QA?.critical || 0,
-          summary.tagDistribution?.DEV_QA?.high || 0,
-          summary.tagDistribution?.DEV_QA?.medium || 0
-        ],
-        backgroundColor: [sevColors[0], sevColors[1], sevColors[2]]
-      }]
+      datasets: [
+        {
+          label: 'Abertas',
+          data: [
+            summary.tagDistribution?.DEV_QA?.critical?.abertas || 0,
+            summary.tagDistribution?.DEV_QA?.high?.abertas || 0,
+            summary.tagDistribution?.DEV_QA?.medium?.abertas || 0
+          ],
+          backgroundColor: [sevColors[0], sevColors[1], sevColors[2]],
+          stack: 'vulnerabilidades'
+        },
+        {
+          label: 'Corrigidas',
+          data: [
+            summary.tagDistribution?.DEV_QA?.critical?.corrigidas || 0,
+            summary.tagDistribution?.DEV_QA?.high?.corrigidas || 0,
+            summary.tagDistribution?.DEV_QA?.medium?.corrigidas || 0
+          ],
+          backgroundColor: '#22c55e',
+          stack: 'vulnerabilidades'
+        }
+      ]
     },
     options: barChartOptions(`Total: ${(summary.tagDistribution?.DEV_QA?.total || 0)} vulnerabilidades`)
   });
@@ -482,15 +513,28 @@ function updateCharts(summary, trends) {
     type: 'bar',
     data: {
       labels: ['Crítica', 'Alta', 'Média'],
-      datasets: [{
-        label: 'Vulnerabilidades',
-        data: [
-          summary.tagDistribution?.PRD_Baixa?.critical || 0,
-          summary.tagDistribution?.PRD_Baixa?.high || 0,
-          summary.tagDistribution?.PRD_Baixa?.medium || 0
-        ],
-        backgroundColor: [sevColors[0], sevColors[1], sevColors[2]]
-      }]
+      datasets: [
+        {
+          label: 'Abertas',
+          data: [
+            summary.tagDistribution?.PRD_Baixa?.critical?.abertas || 0,
+            summary.tagDistribution?.PRD_Baixa?.high?.abertas || 0,
+            summary.tagDistribution?.PRD_Baixa?.medium?.abertas || 0
+          ],
+          backgroundColor: [sevColors[0], sevColors[1], sevColors[2]],
+          stack: 'vulnerabilidades'
+        },
+        {
+          label: 'Corrigidas',
+          data: [
+            summary.tagDistribution?.PRD_Baixa?.critical?.corrigidas || 0,
+            summary.tagDistribution?.PRD_Baixa?.high?.corrigidas || 0,
+            summary.tagDistribution?.PRD_Baixa?.medium?.corrigidas || 0
+          ],
+          backgroundColor: '#22c55e',
+          stack: 'vulnerabilidades'
+        }
+      ]
     },
     options: barChartOptions(`Total: ${(summary.tagDistribution?.PRD_Baixa?.total || 0)} vulnerabilidades`)
   });
@@ -502,15 +546,28 @@ function updateCharts(summary, trends) {
     type: 'bar',
     data: {
       labels: ['Crítica', 'Alta', 'Média'],
-      datasets: [{
-        label: 'Vulnerabilidades',
-        data: [
-          summary.tagDistribution?.PRD_Alta?.critical || 0,
-          summary.tagDistribution?.PRD_Alta?.high || 0,
-          summary.tagDistribution?.PRD_Alta?.medium || 0
-        ],
-        backgroundColor: [sevColors[0], sevColors[1], sevColors[2]]
-      }]
+      datasets: [
+        {
+          label: 'Abertas',
+          data: [
+            summary.tagDistribution?.PRD_Alta?.critical?.abertas || 0,
+            summary.tagDistribution?.PRD_Alta?.high?.abertas || 0,
+            summary.tagDistribution?.PRD_Alta?.medium?.abertas || 0
+          ],
+          backgroundColor: [sevColors[0], sevColors[1], sevColors[2]],
+          stack: 'vulnerabilidades'
+        },
+        {
+          label: 'Corrigidas',
+          data: [
+            summary.tagDistribution?.PRD_Alta?.critical?.corrigidas || 0,
+            summary.tagDistribution?.PRD_Alta?.high?.corrigidas || 0,
+            summary.tagDistribution?.PRD_Alta?.medium?.corrigidas || 0
+          ],
+          backgroundColor: '#22c55e',
+          stack: 'vulnerabilidades'
+        }
+      ]
     },
     options: barChartOptions(`Total: ${(summary.tagDistribution?.PRD_Alta?.total || 0)} vulnerabilidades`)
   });
