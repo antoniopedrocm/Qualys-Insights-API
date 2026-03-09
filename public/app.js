@@ -195,6 +195,8 @@ const dashboardState = {
   selectedView: 'geral',
   startDate: '',
   endDate: '',
+  fixStartDate: '',
+  fixEndDate: '',
   vulnerabilities: []
 };
 
@@ -226,11 +228,35 @@ function getDetectedAt(vuln) {
   return vuln.detectedAt || (vuln.firstFound ? String(vuln.firstFound).split('T')[0] : '');
 }
 
+function getFixDate(vuln) {
+  const explicitDate = vuln.fixedDate || vuln.lastFixedDate || vuln.resolvedDate || '';
+  if (explicitDate) return String(explicitDate).split('T')[0];
+
+  const status = getStatusValue(vuln);
+  if (status !== 'FIXED') return '';
+
+  const fixedTimestamp = vuln.fixedAt || vuln.statusDate || vuln.lastStatusChange || vuln.updatedAt || vuln.lastSeenDate || '';
+  return fixedTimestamp ? String(fixedTimestamp).split('T')[0] : '';
+}
+
+function normalizeFixDateRange(start, end) {
+  return normalizeDateRange(start, end);
+}
+
 function filterByDate(vulnerabilities, start, end) {
   const { startDate, endDate } = normalizeDateRange(start, end);
   return vulnerabilities.filter((vuln) => {
     const detectedAt = getDetectedAt(vuln);
     return detectedAt && detectedAt >= startDate && detectedAt <= endDate;
+  });
+}
+
+function filterByFixDate(vulnerabilities, start, end) {
+  const { startDate, endDate } = normalizeFixDateRange(start, end);
+  return vulnerabilities.filter((vuln) => {
+    if (!isFixedVuln(vuln)) return false;
+    const fixDate = getFixDate(vuln);
+    return fixDate && fixDate >= startDate && fixDate <= endDate;
   });
 }
 
@@ -274,7 +300,7 @@ function isFixedVuln(vuln) {
   return status === 'FIXED';
 }
 
-function calcChartSeries(vulnerabilitiesFiltradas) {
+function calcChartSeries(vulnerabilitiesFiltradas, trendDateSelector = getDetectedAt) {
   const qidCount = {};
   const dateCount = {};
   const emptyBucket = () => ({ abertas: 0, corrigidas: 0 });
@@ -289,8 +315,8 @@ function calcChartSeries(vulnerabilitiesFiltradas) {
     const qid = vuln.qid || 'Unknown';
     qidCount[qid] = (qidCount[qid] || 0) + 1;
 
-    const detectedAt = getDetectedAt(vuln);
-    if (detectedAt) dateCount[detectedAt] = (dateCount[detectedAt] || 0) + 1;
+    const trendDate = trendDateSelector(vuln);
+    if (trendDate) dateCount[trendDate] = (dateCount[trendDate] || 0) + 1;
 
     const windowKey = findWindowByTags(vuln.hostTags || '');
     if (windowKey) {
@@ -314,12 +340,17 @@ function calcChartSeries(vulnerabilitiesFiltradas) {
 
 function renderDashboardWithView() {
   const source = dashboardState.vulnerabilities;
-  const filtered = dashboardState.selectedView === 'detalhada'
+  const detailedFiltered = dashboardState.selectedView === 'detalhada'
     ? filterByDate(source, dashboardState.startDate, dashboardState.endDate)
     : source;
 
+  const filtered = dashboardState.selectedView === 'detalhada'
+    ? filterByFixDate(detailedFiltered, dashboardState.fixStartDate, dashboardState.fixEndDate)
+    : detailedFiltered;
+
+  const trendDateSelector = dashboardState.selectedView === 'detalhada' ? getFixDate : getDetectedAt;
   const kpis = calcKpis(filtered);
-  const chartSeries = calcChartSeries(filtered);
+  const chartSeries = calcChartSeries(filtered, trendDateSelector);
 
   document.getElementById('totalHosts').textContent = kpis.totalHosts;
   document.getElementById('totalVulns').textContent = kpis.totalVulnerabilities;
@@ -358,13 +389,23 @@ function setDashboardView(view) {
 function handleDashboardDateChange() {
   const startInput = document.getElementById('dashboardStartDate');
   const endInput = document.getElementById('dashboardEndDate');
+  const fixStartInput = document.getElementById('dashboardFixStartDate');
+  const fixEndInput = document.getElementById('dashboardFixEndDate');
 
   try {
     const normalized = normalizeDateRange(startInput.value, endInput.value);
+    const normalizedFix = normalizeFixDateRange(fixStartInput.value, fixEndInput.value);
+
     dashboardState.startDate = normalized.startDate;
     dashboardState.endDate = normalized.endDate;
+    dashboardState.fixStartDate = normalizedFix.startDate;
+    dashboardState.fixEndDate = normalizedFix.endDate;
+
     startInput.value = normalized.startDate;
     endInput.value = normalized.endDate;
+    fixStartInput.value = normalizedFix.startDate;
+    fixEndInput.value = normalizedFix.endDate;
+
     renderDashboardWithView();
   } catch (error) {
     showMessage(error.message, 'error');
@@ -386,11 +427,21 @@ async function loadDashboard() {
 
     const startInput = document.getElementById('dashboardStartDate');
     const endInput = document.getElementById('dashboardEndDate');
+    const fixStartInput = document.getElementById('dashboardFixStartDate');
+    const fixEndInput = document.getElementById('dashboardFixEndDate');
+
     const normalized = normalizeDateRange(startInput.value, endInput.value);
+    const normalizedFix = normalizeFixDateRange(fixStartInput.value, fixEndInput.value);
+
     dashboardState.startDate = normalized.startDate;
     dashboardState.endDate = normalized.endDate;
+    dashboardState.fixStartDate = normalizedFix.startDate;
+    dashboardState.fixEndDate = normalizedFix.endDate;
+
     startInput.value = normalized.startDate;
     endInput.value = normalized.endDate;
+    fixStartInput.value = normalizedFix.startDate;
+    fixEndInput.value = normalizedFix.endDate;
 
     syncDashboardViewControls();
     renderDashboardWithView();
