@@ -229,15 +229,53 @@ function getDetectedAt(vuln) {
   return vuln.detectedAt || (vuln.firstFound ? String(vuln.firstFound).split('T')[0] : '');
 }
 
+function normalizeDateToYmd(value) {
+  if (!value) return '';
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().split('T')[0];
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const fromNumber = new Date(value);
+    return Number.isNaN(fromNumber.getTime()) ? '' : fromNumber.toISOString().split('T')[0];
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return '';
+
+  const ddMmYyyy = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (ddMmYyyy) {
+    const [, day, month, year] = ddMmYyyy;
+    return `${year}-${month}-${day}`;
+  }
+
+  const isoLike = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoLike) return isoLike[1];
+
+  const numericValue = Number(raw);
+  if (!Number.isNaN(numericValue)) {
+    const fromNumericString = new Date(numericValue);
+    if (!Number.isNaN(fromNumericString.getTime())) {
+      return fromNumericString.toISOString().split('T')[0];
+    }
+  }
+
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().split('T')[0];
+}
+
 function getFixDate(vuln) {
-  const explicitDate = vuln.fixedDate || vuln.lastFixedDate || vuln.resolvedDate || '';
-  if (explicitDate) return String(explicitDate).split('T')[0];
-
-  const status = getStatusValue(vuln);
-  if (status !== 'FIXED') return '';
-
-  const fixedTimestamp = vuln.fixedAt || vuln.statusDate || vuln.lastStatusChange || vuln.updatedAt || vuln.lastSeenDate || '';
-  return fixedTimestamp ? String(fixedTimestamp).split('T')[0] : '';
+  return normalizeDateToYmd(
+    vuln.fixedDate
+    || vuln.lastFixedDate
+    || vuln.resolvedDate
+    || vuln.lastFixed
+    || vuln.lastTest
+    || vuln.lastFound
+    || vuln.detectionUpdated
+    || null
+  );
 }
 
 function normalizeFixDateRange(start, end) {
@@ -255,7 +293,7 @@ function filterByDate(vulnerabilities, start, end) {
 function filterByFixDate(vulnerabilities, start, end) {
   const { startDate, endDate } = normalizeFixDateRange(start, end);
   return vulnerabilities.filter((vuln) => {
-    if (!isFixedVuln(vuln)) return false;
+    if (getStatusValue(vuln) !== 'FIXED') return false;
     const fixDate = getFixDate(vuln);
     return fixDate && fixDate >= startDate && fixDate <= endDate;
   });
@@ -507,6 +545,7 @@ async function loadDashboard() {
     }
 
     dashboardState.vulnerabilities = vulnerabilitiesResponse.data.filter((v) => ['3', '4', '5', 'CRITICAL', 'HIGH', 'MEDIUM'].includes(String(v.severity).toUpperCase()));
+    console.log('FIXED sample:', dashboardState.vulnerabilities.filter((v) => getStatusValue(v) === 'FIXED').slice(0, 5));
 
     const startInput = document.getElementById('dashboardStartDate');
     const endInput = document.getElementById('dashboardEndDate');
