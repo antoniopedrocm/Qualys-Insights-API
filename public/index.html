@@ -78,7 +78,12 @@
         </div>
 
         <div id="dashboardDateFilter" class="filter-section dashboard-date-filter" style="display:none;">
-          <div class="filter-grid">
+          <div id="dateFilterModeSelector" class="dashboard-view-selector date-mode-selector" role="tablist" aria-label="Selecionar modo do filtro de data" style="display:none;">
+            <button class="view-option date-mode-option active" data-mode="detection" role="tab" aria-selected="true" onclick="setDashboardDateFilterMode('detection')">Somente Detecção</button>
+            <button class="view-option date-mode-option" data-mode="fix" role="tab" aria-selected="false" onclick="setDashboardDateFilterMode('fix')">Somente Correção</button>
+            <button class="view-option date-mode-option" data-mode="combined" role="tab" aria-selected="false" onclick="setDashboardDateFilterMode('combined')">Combinar Ambos</button>
+          </div>
+          <div id="detectionDateRangeGroup" class="filter-grid date-range-group">
             <div class="filter-item">
               <label for="dashboardStartDate">Período (data de detecção) - Data Inicial</label>
               <input type="date" id="dashboardStartDate" onchange="handleDashboardDateChange()">
@@ -88,7 +93,7 @@
               <input type="date" id="dashboardEndDate" onchange="handleDashboardDateChange()">
             </div>
           </div>
-          <div class="filter-grid">
+          <div id="fixDateRangeGroup" class="filter-grid date-range-group">
             <div class="filter-item">
               <label for="dashboardFixStartDate">Período (data de correção) - Data Inicial</label>
               <input type="date" id="dashboardFixStartDate" onchange="handleDashboardDateChange()">
@@ -100,6 +105,11 @@
           </div>
         </div>
 
+        <div id="dashboardEmptyState" class="chart-container dashboard-empty-state" style="display:none;">
+          Nenhuma vulnerabilidade encontrada para a combinação de filtros selecionada.
+        </div>
+
+        <div id="dashboardChartsContent">
         <!-- Gráficos Executivos -->
         <div class="charts-grid-col-2">
           <div class="chart-container">
@@ -141,6 +151,7 @@
           <div class="chart-wrapper-large">
             <canvas id="topVulnsChart"></canvas>
           </div>
+        </div>
         </div>
       </div>
 
