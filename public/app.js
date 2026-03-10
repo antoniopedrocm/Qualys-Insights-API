@@ -301,7 +301,9 @@ function filterByFixDate(vulnerabilities, start, end) {
 
 function applyDateFilters(vulnerabilities, mode, detectionRange, fixRange) {
   if (mode === 'fix') {
-    return filterByFixDate(vulnerabilities, fixRange.startDate, fixRange.endDate);
+    const fixedVulnerabilities = filterByFixDate(vulnerabilities, fixRange.startDate, fixRange.endDate);
+    const openVulnerabilities = vulnerabilities.filter((vuln) => getStatusValue(vuln) !== 'FIXED');
+    return [...openVulnerabilities, ...fixedVulnerabilities];
   }
 
   if (mode === 'combined') {
