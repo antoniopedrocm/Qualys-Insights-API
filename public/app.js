@@ -305,8 +305,28 @@ function applyDateFilters(vulnerabilities, mode, detectionRange, fixRange) {
   }
 
   if (mode === 'combined') {
-    const byDetection = filterByDate(vulnerabilities, detectionRange.startDate, detectionRange.endDate);
-    return filterByFixDate(byDetection, fixRange.startDate, fixRange.endDate);
+    const { startDate: detectionStart, endDate: detectionEnd } = normalizeDateRange(
+      detectionRange.startDate,
+      detectionRange.endDate
+    );
+    const { startDate: fixStart, endDate: fixEnd } = normalizeFixDateRange(
+      fixRange.startDate,
+      fixRange.endDate
+    );
+
+    const openVulnerabilities = vulnerabilities.filter((vuln) => {
+      if (getStatusValue(vuln) === 'FIXED') return false;
+      const detectedAt = getDetectedAt(vuln);
+      return detectedAt && detectedAt >= detectionStart && detectedAt <= detectionEnd;
+    });
+
+    const fixedVulnerabilities = vulnerabilities.filter((vuln) => {
+      if (getStatusValue(vuln) !== 'FIXED') return false;
+      const fixDate = getFixDate(vuln);
+      return fixDate && fixDate >= fixStart && fixDate <= fixEnd;
+    });
+
+    return [...openVulnerabilities, ...fixedVulnerabilities];
   }
 
   return filterByDate(vulnerabilities, detectionRange.startDate, detectionRange.endDate);
