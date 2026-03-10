@@ -193,6 +193,7 @@ async function apiCall(endpoint, needsAuth = true) {
 
 const dashboardState = {
   selectedView: 'geral',
+  dateFilterMode: 'detection',
   startDate: '',
   endDate: '',
   fixStartDate: '',
@@ -258,6 +259,19 @@ function filterByFixDate(vulnerabilities, start, end) {
     const fixDate = getFixDate(vuln);
     return fixDate && fixDate >= startDate && fixDate <= endDate;
   });
+}
+
+function applyDateFilters(vulnerabilities, mode, detectionRange, fixRange) {
+  if (mode === 'fix') {
+    return filterByFixDate(vulnerabilities, fixRange.startDate, fixRange.endDate);
+  }
+
+  if (mode === 'combined') {
+    const byDetection = filterByDate(vulnerabilities, detectionRange.startDate, detectionRange.endDate);
+    return filterByFixDate(byDetection, fixRange.startDate, fixRange.endDate);
+  }
+
+  return filterByDate(vulnerabilities, detectionRange.startDate, detectionRange.endDate);
 }
 
 function severityKey(vuln) {
@@ -340,17 +354,35 @@ function calcChartSeries(vulnerabilitiesFiltradas, trendDateSelector = getDetect
 
 function renderDashboardWithView() {
   const source = dashboardState.vulnerabilities;
-  const detailedFiltered = dashboardState.selectedView === 'detalhada'
-    ? filterByDate(source, dashboardState.startDate, dashboardState.endDate)
+  const isDetalhada = dashboardState.selectedView === 'detalhada';
+  const filtered = isDetalhada
+    ? applyDateFilters(
+      source,
+      dashboardState.dateFilterMode,
+      { startDate: dashboardState.startDate, endDate: dashboardState.endDate },
+      { startDate: dashboardState.fixStartDate, endDate: dashboardState.fixEndDate }
+    )
     : source;
 
-  const filtered = dashboardState.selectedView === 'detalhada'
-    ? filterByFixDate(detailedFiltered, dashboardState.fixStartDate, dashboardState.fixEndDate)
-    : detailedFiltered;
-
-  const trendDateSelector = dashboardState.selectedView === 'detalhada' ? getFixDate : getDetectedAt;
+  const trendDateSelector = isDetalhada && dashboardState.dateFilterMode === 'fix'
+    ? getFixDate
+    : getDetectedAt;
   const kpis = calcKpis(filtered);
   const chartSeries = calcChartSeries(filtered, trendDateSelector);
+
+  const hasData = filtered.length > 0;
+  const emptyState = document.getElementById('dashboardEmptyState');
+  const chartsContent = document.getElementById('dashboardChartsContent');
+
+  if (emptyState && chartsContent) {
+    if (hasData) {
+      emptyState.style.display = 'none';
+      chartsContent.style.display = 'block';
+    } else {
+      emptyState.style.display = 'block';
+      chartsContent.style.display = 'none';
+    }
+  }
 
   document.getElementById('totalHosts').textContent = kpis.totalHosts;
   document.getElementById('totalVulns').textContent = kpis.totalVulnerabilities;
@@ -358,7 +390,9 @@ function renderDashboardWithView() {
   document.getElementById('highVulns').textContent = kpis.severityDistribution.high;
   document.getElementById('mediumVulns').textContent = kpis.severityDistribution.medium;
 
-  updateCharts({ ...kpis, ...chartSeries }, { trends: chartSeries.trends });
+  if (hasData) {
+    updateCharts({ ...kpis, ...chartSeries }, { trends: chartSeries.trends });
+  }
 }
 
 function syncDashboardViewControls() {
@@ -367,9 +401,18 @@ function syncDashboardViewControls() {
   const dateFilter = document.getElementById('dashboardDateFilter');
   const geralBtn = document.getElementById('viewGeralBtn');
   const detalhadaBtn = document.getElementById('viewDetalhadaBtn');
+  const modeSelector = document.getElementById('dateFilterModeSelector');
+  const detectionRangeGroup = document.getElementById('detectionDateRangeGroup');
+  const fixRangeGroup = document.getElementById('fixDateRangeGroup');
+  const detectionInputs = [document.getElementById('dashboardStartDate'), document.getElementById('dashboardEndDate')];
+  const fixInputs = [document.getElementById('dashboardFixStartDate'), document.getElementById('dashboardFixEndDate')];
+  const isDetectionMode = dashboardState.dateFilterMode === 'detection';
+  const isFixMode = dashboardState.dateFilterMode === 'fix';
+  const isCombinedMode = dashboardState.dateFilterMode === 'combined';
 
   if (selector) selector.style.display = document.getElementById('dashboard').classList.contains('active') ? 'inline-flex' : 'none';
   if (dateFilter) dateFilter.style.display = isDetalhada ? 'block' : 'none';
+  if (modeSelector) modeSelector.style.display = isDetalhada ? 'inline-flex' : 'none';
   if (geralBtn) {
     geralBtn.classList.toggle('active', !isDetalhada);
     geralBtn.setAttribute('aria-selected', String(!isDetalhada));
@@ -377,6 +420,39 @@ function syncDashboardViewControls() {
   if (detalhadaBtn) {
     detalhadaBtn.classList.toggle('active', isDetalhada);
     detalhadaBtn.setAttribute('aria-selected', String(isDetalhada));
+  }
+
+  document.querySelectorAll('.date-mode-option').forEach((button) => {
+    const isActive = button.dataset.mode === dashboardState.dateFilterMode;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-selected', String(isActive));
+  });
+
+  if (detectionRangeGroup) {
+    detectionRangeGroup.classList.toggle('range-disabled', isFixMode);
+  }
+
+  if (fixRangeGroup) {
+    fixRangeGroup.classList.toggle('range-disabled', isDetectionMode);
+  }
+
+  detectionInputs.forEach((input) => {
+    if (!input) return;
+    input.disabled = isFixMode;
+  });
+
+  fixInputs.forEach((input) => {
+    if (!input) return;
+    input.disabled = isDetectionMode;
+  });
+
+  if (!isDetalhada || isCombinedMode) {
+    detectionInputs.forEach((input) => {
+      if (input) input.disabled = false;
+    });
+    fixInputs.forEach((input) => {
+      if (input) input.disabled = false;
+    });
   }
 }
 
@@ -410,6 +486,13 @@ function handleDashboardDateChange() {
   } catch (error) {
     showMessage(error.message, 'error');
   }
+}
+
+function setDashboardDateFilterMode(mode) {
+  const allowedModes = new Set(['detection', 'fix', 'combined']);
+  dashboardState.dateFilterMode = allowedModes.has(mode) ? mode : 'detection';
+  syncDashboardViewControls();
+  renderDashboardWithView();
 }
 
 async function loadDashboard() {

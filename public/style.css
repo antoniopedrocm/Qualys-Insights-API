@@ -194,6 +194,52 @@ body {
   margin-bottom: 24px;
 }
 
+.dashboard-date-filter .date-mode-selector {
+  margin-bottom: 18px;
+}
+
+.date-range-group {
+  transition: opacity 0.2s ease;
+}
+
+.date-range-group.range-disabled {
+  opacity: 0.45;
+}
+
+.filter-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filter-item label {
+  color: var(--text-light-primary);
+  font-weight: 600;
+}
+
+input[type="date"] {
+  width: 100%;
+  padding: 12px;
+  background: var(--bg-dark-primary);
+  border: 1px solid var(--bg-dark-tertiary);
+  border-radius: var(--border-radius);
+  color: var(--text-light-primary);
+  font-family: var(--font-family);
+  font-size: 1em;
+}
+
+input[type="date"]:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+.dashboard-empty-state {
+  text-align: center;
+  color: var(--text-light-secondary);
+  font-size: 1.05em;
+  font-weight: 600;
+}
+
 /* ================================== */
 /* COMPONENTES (BOTÕES)      */
 /* ================================== */
