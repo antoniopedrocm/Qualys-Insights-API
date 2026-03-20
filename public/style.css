@@ -499,6 +499,75 @@ input[type="date"]:focus {
   margin-right: 5px;
 }
 
+
+.status-filter-dropdown {
+  position: relative;
+}
+
+.status-filter-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg-dark-secondary);
+  border: 1px solid var(--bg-dark-tertiary);
+  border-radius: var(--border-radius);
+  color: var(--text-light-primary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.status-filter-trigger:hover,
+.status-filter-trigger:focus {
+  border-color: var(--accent-blue);
+  outline: none;
+}
+
+.status-filter-icon,
+.status-filter-caret {
+  color: var(--text-light-secondary);
+}
+
+.status-filter-caret {
+  margin-left: auto;
+}
+
+.status-filter-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: none;
+  background: var(--bg-dark-primary);
+  border: 1px solid var(--bg-dark-tertiary);
+  border-radius: var(--border-radius);
+  box-shadow: var(--card-shadow);
+  padding: 12px;
+}
+
+.status-filter-dropdown.open .status-filter-menu {
+  display: block;
+}
+
+.status-filter-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.status-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-light-primary);
+  cursor: pointer;
+}
+
+.status-filter-option input {
+  accent-color: var(--accent-blue);
+}
 .input-with-icon {
   display: flex;
   align-items: center;
