@@ -1203,7 +1203,7 @@ function applyFilters() {
 
   const quickSearch = document.getElementById('quickSearch').value.toLowerCase().trim();
   const quickSearchUpper = quickSearch.toUpperCase();
-  const qid = document.getElementById('filterQid').value.trim();
+  const qid = document.getElementById('filterQid')?.value.trim() || '';
   const selectedTag = document.getElementById('tagFilter').value;
 
   let filtered = currentData.vulnerabilities;
@@ -1255,7 +1255,8 @@ function applyFilters() {
 function clearFilters() {
   document.querySelectorAll('.severity-filter').forEach(cb => cb.checked = true);
   document.getElementById('quickSearch').value = '';
-  document.getElementById('filterQid').value = '';
+  const qidInput = document.getElementById('filterQid');
+  if (qidInput) qidInput.value = '';
   document.getElementById('tagFilter').value = '';
   selectedStatuses = [];
   renderStatusFilterOptions();
