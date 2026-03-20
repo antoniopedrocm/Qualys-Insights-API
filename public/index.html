@@ -208,15 +208,15 @@
                   <span>🆔</span>
                   <input type="text" id="filterQid" placeholder="Buscar por QID" oninput="applyFilters()">
                 </div>
-                <div class="input-with-icon compact">
-                  <span>📊</span>
-                  <select id="filterStatus" onchange="applyFilters()">
-                    <option value="">Todos os Status</option>
-                    <option value="New">Novo</option>
-                    <option value="Active">Ativo</option>
-                    <option value="Re-Opened">Reaberto</option>
-                    <option value="Fixed">Corrigido</option>
-                  </select>
+                <div class="status-filter-dropdown compact" id="statusFilterDropdown">
+                  <button type="button" class="status-filter-trigger" id="statusFilterTrigger" onclick="toggleStatusDropdown()" aria-haspopup="true" aria-expanded="false">
+                    <span class="status-filter-icon">📊</span>
+                    <span id="statusFilterLabel">Todos os Status</span>
+                    <span class="status-filter-caret">▾</span>
+                  </button>
+                  <div class="status-filter-menu" id="statusFilterMenu">
+                    <div class="status-filter-options" id="statusFilterOptions"></div>
+                  </div>
                 </div>
               </div>
             </div>

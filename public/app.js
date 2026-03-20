@@ -1,4 +1,6 @@
 let charts = {};
+const DEFAULT_STATUS_ORDER = ['New', 'Active', 'Re-Opened', 'Fixed'];
+let selectedStatuses = [];
 let currentData = {
   vulnerabilities: [],
   filteredVulnerabilities: [],
@@ -157,6 +159,72 @@ function populateTagFilter(tags) {
   if (!select) return;
   select.innerHTML = '<option value="">Todas as Tags</option>' +
     tags.map(tag => `<option value="${tag}">${tag}</option>`).join('');
+}
+
+function getAvailableStatuses(vulnerabilities = []) {
+  const discovered = new Set((vulnerabilities || []).map((item) => item?.status).filter(Boolean));
+  const ordered = DEFAULT_STATUS_ORDER.filter((status) => discovered.has(status));
+  const extras = Array.from(discovered)
+    .filter((status) => !DEFAULT_STATUS_ORDER.includes(status))
+    .sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
+  return [...ordered, ...extras];
+}
+
+function getStatusLabel(status) {
+  if (status === 'New') return 'Novo';
+  if (status === 'Active') return 'Ativo';
+  if (status === 'Re-Opened') return 'Reaberto';
+  if (status === 'Fixed') return 'Corrigido';
+  return status;
+}
+
+function updateStatusFilterLabel() {
+  const label = document.getElementById('statusFilterLabel');
+  if (!label) return;
+
+  const totalStatuses = getAvailableStatuses(currentData.vulnerabilities).length;
+  if (selectedStatuses.length === 0 || (totalStatuses > 0 && selectedStatuses.length === totalStatuses)) {
+    label.textContent = 'Todos os Status';
+    return;
+  }
+
+  label.textContent = `Selecionados (${selectedStatuses.length})`;
+}
+
+function renderStatusFilterOptions() {
+  const container = document.getElementById('statusFilterOptions');
+  if (!container) return;
+
+  const statuses = getAvailableStatuses(currentData.vulnerabilities);
+  container.innerHTML = statuses.map((status) => `
+    <label class="status-filter-option">
+      <input type="checkbox" value="${status}" ${selectedStatuses.includes(status) ? 'checked' : ''} onchange="toggleStatusSelection(this.value)">
+      <span>${getStatusLabel(status)}</span>
+    </label>
+  `).join('');
+
+  updateStatusFilterLabel();
+}
+
+function toggleStatusDropdown(forceState) {
+  const dropdown = document.getElementById('statusFilterDropdown');
+  const trigger = document.getElementById('statusFilterTrigger');
+  if (!dropdown || !trigger) return;
+
+  const nextOpenState = typeof forceState === 'boolean' ? forceState : !dropdown.classList.contains('open');
+  dropdown.classList.toggle('open', nextOpenState);
+  trigger.setAttribute('aria-expanded', String(nextOpenState));
+}
+
+function toggleStatusSelection(status) {
+  if (selectedStatuses.includes(status)) {
+    selectedStatuses = selectedStatuses.filter((item) => item !== status);
+  } else {
+    selectedStatuses = [...selectedStatuses, status];
+  }
+
+  renderStatusFilterOptions();
+  applyFilters();
 }
 
 async function apiCall(endpoint, needsAuth = true) {
@@ -1086,6 +1154,8 @@ async function loadVulnerabilities() {
     currentData.filteredVulnerabilities = data.data || [];
     currentData.availableTags = extractTagsFromVulns(currentData.vulnerabilities);
     populateTagFilter(currentData.availableTags);
+    selectedStatuses = selectedStatuses.filter((status) => getAvailableStatuses(currentData.vulnerabilities).includes(status));
+    renderStatusFilterOptions();
     displayVulnerabilities(currentData.vulnerabilities);
     document.getElementById('vulnTotal').textContent = currentData.vulnerabilities.length;
     showLoading(false);
@@ -1121,6 +1191,12 @@ function displayVulnerabilities(vulns) {
   `).join('');
 }
 
+document.addEventListener('click', (event) => {
+  const dropdown = document.getElementById('statusFilterDropdown');
+  if (!dropdown || dropdown.contains(event.target)) return;
+  toggleStatusDropdown(false);
+});
+
 function applyFilters() {
   const selectedSeverities = Array.from(document.querySelectorAll('.severity-filter:checked'))
     .map(cb => cb.value);
@@ -1129,11 +1205,11 @@ function applyFilters() {
   const quickSearchUpper = quickSearch.toUpperCase();
   const qid = document.getElementById('filterQid').value.trim();
   const selectedTag = document.getElementById('tagFilter').value;
-  const status = document.getElementById('filterStatus').value;
 
   let filtered = currentData.vulnerabilities;
+  const hasStatusFilter = selectedStatuses.length > 0;
 
-  const hasActiveFilters = selectedSeverities.length < 5 || quickSearch || qid || selectedTag || status;
+  const hasActiveFilters = selectedSeverities.length < 5 || quickSearch || qid || selectedTag || hasStatusFilter;
 
   if (!hasActiveFilters) {
     currentData.filteredVulnerabilities = filtered;
@@ -1164,8 +1240,8 @@ function applyFilters() {
     filtered = filtered.filter(v => parseTags(v.hostTags).some(tag => tag.toLowerCase() === selectedTag.toLowerCase()));
   }
   // Filtro de Status
-  if (status) {
-    filtered = filtered.filter(v => v.status === status);
+  if (hasStatusFilter) {
+    filtered = filtered.filter(v => selectedStatuses.includes(v.status));
   }
 
   currentData.filteredVulnerabilities = filtered;
@@ -1181,7 +1257,9 @@ function clearFilters() {
   document.getElementById('quickSearch').value = '';
   document.getElementById('filterQid').value = '';
   document.getElementById('tagFilter').value = '';
-  document.getElementById('filterStatus').value = '';
+  selectedStatuses = [];
+  renderStatusFilterOptions();
+  toggleStatusDropdown(false);
 
   currentData.filteredVulnerabilities = currentData.vulnerabilities;
   displayVulnerabilities(currentData.vulnerabilities);
