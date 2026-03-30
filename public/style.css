@@ -526,6 +526,27 @@ input[type="date"]:focus {
 .status-filter-option input {
   accent-color: var(--accent-blue);
 }
+
+.type-detected-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.type-detected-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-light-primary);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.type-detected-option input {
+  accent-color: var(--accent-blue);
+}
+
 .input-with-icon {
   display: flex;
   align-items: center;

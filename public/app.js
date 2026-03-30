@@ -1,6 +1,8 @@
 let charts = {};
 const DEFAULT_STATUS_ORDER = ['New', 'Active', 'Re-Opened', 'Fixed'];
 let selectedStatuses = [];
+let includeConfirmed = true;
+let includePotential = false;
 let currentData = {
   vulnerabilities: [],
   filteredVulnerabilities: [],
@@ -103,6 +105,20 @@ function parseTags(tagString) {
     .split(/[,;|]/)
     .map(tag => tag.trim())
     .filter(Boolean);
+}
+
+function getTypeDetectedValue(vuln) {
+  return vuln?.typeDetected || vuln?.type_detected || vuln?.vulnerabilities?.typeDetected || '';
+}
+
+function toggleTypeDetectedFilter(type, isChecked) {
+  if (type === 'Confirmed') {
+    includeConfirmed = isChecked;
+  }
+  if (type === 'Potential') {
+    includePotential = isChecked;
+  }
+  applyFilters();
 }
 
 function isQueuedResponse(response) {
@@ -1174,11 +1190,17 @@ function applyFilters() {
   const quickSearchUpper = quickSearch.toUpperCase();
   const qid = document.getElementById('filterQid')?.value.trim() || '';
   const selectedTag = document.getElementById('tagFilter').value;
+  includeConfirmed = document.getElementById('includeConfirmed')?.checked ?? includeConfirmed;
+  includePotential = document.getElementById('includePotential')?.checked ?? includePotential;
+  const selectedTypeDetected = [];
+  if (includeConfirmed) selectedTypeDetected.push('Confirmed');
+  if (includePotential) selectedTypeDetected.push('Potential');
 
   let filtered = currentData.vulnerabilities;
   const hasStatusFilter = selectedStatuses.length > 0;
+  const hasTypeDetectedFilter = selectedTypeDetected.length < 2;
 
-  const hasActiveFilters = selectedSeverities.length < 5 || quickSearch || qid || selectedTag || hasStatusFilter;
+  const hasActiveFilters = selectedSeverities.length < 5 || quickSearch || qid || selectedTag || hasStatusFilter || hasTypeDetectedFilter;
 
   if (!hasActiveFilters) {
     currentData.filteredVulnerabilities = filtered;
@@ -1208,6 +1230,12 @@ function applyFilters() {
   if (selectedTag) {
     filtered = filtered.filter(v => parseTags(v.hostTags).some(tag => tag.toLowerCase() === selectedTag.toLowerCase()));
   }
+  // Filtro de tipo de detecção
+  if (selectedTypeDetected.length > 0) {
+    filtered = filtered.filter(v => selectedTypeDetected.includes(getTypeDetectedValue(v)));
+  } else {
+    filtered = [];
+  }
   // Filtro de Status
   if (hasStatusFilter) {
     filtered = filtered.filter(v => selectedStatuses.includes(v.status));
@@ -1227,6 +1255,12 @@ function clearFilters() {
   const qidInput = document.getElementById('filterQid');
   if (qidInput) qidInput.value = '';
   document.getElementById('tagFilter').value = '';
+  includeConfirmed = true;
+  includePotential = false;
+  const includeConfirmedCheckbox = document.getElementById('includeConfirmed');
+  if (includeConfirmedCheckbox) includeConfirmedCheckbox.checked = true;
+  const includePotentialCheckbox = document.getElementById('includePotential');
+  if (includePotentialCheckbox) includePotentialCheckbox.checked = false;
   selectedStatuses = [];
   renderStatusFilterOptions();
 
