@@ -191,6 +191,16 @@
                 <span>🔎</span>
                 <input type="text" id="quickSearch" placeholder="Digite para filtrar" oninput="applyFilters()">
               </div>
+              <div class="type-detected-options">
+                <label class="type-detected-option">
+                  <input type="checkbox" id="includeConfirmed" checked onchange="toggleTypeDetectedFilter('Confirmed', this.checked)">
+                  <span>Vulnerabilidades Confirmadas</span>
+                </label>
+                <label class="type-detected-option">
+                  <input type="checkbox" id="includePotential" onchange="toggleTypeDetectedFilter('Potential', this.checked)">
+                  <span>Vulnerabilidades em Potencial</span>
+                </label>
+              </div>
             </div>
 
             <div class="filter-card">
