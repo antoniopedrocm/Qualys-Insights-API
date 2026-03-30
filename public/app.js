@@ -178,19 +178,6 @@ function getStatusLabel(status) {
   return status;
 }
 
-function updateStatusFilterLabel() {
-  const label = document.getElementById('statusFilterLabel');
-  if (!label) return;
-
-  const totalStatuses = getAvailableStatuses(currentData.vulnerabilities).length;
-  if (selectedStatuses.length === 0 || (totalStatuses > 0 && selectedStatuses.length === totalStatuses)) {
-    label.textContent = 'Todos os Status';
-    return;
-  }
-
-  label.textContent = `Selecionados (${selectedStatuses.length})`;
-}
-
 function renderStatusFilterOptions() {
   const container = document.getElementById('statusFilterOptions');
   if (!container) return;
@@ -202,18 +189,6 @@ function renderStatusFilterOptions() {
       <span>${getStatusLabel(status)}</span>
     </label>
   `).join('');
-
-  updateStatusFilterLabel();
-}
-
-function toggleStatusDropdown(forceState) {
-  const dropdown = document.getElementById('statusFilterDropdown');
-  const trigger = document.getElementById('statusFilterTrigger');
-  if (!dropdown || !trigger) return;
-
-  const nextOpenState = typeof forceState === 'boolean' ? forceState : !dropdown.classList.contains('open');
-  dropdown.classList.toggle('open', nextOpenState);
-  trigger.setAttribute('aria-expanded', String(nextOpenState));
 }
 
 function toggleStatusSelection(status) {
@@ -1191,12 +1166,6 @@ function displayVulnerabilities(vulns) {
   `).join('');
 }
 
-document.addEventListener('click', (event) => {
-  const dropdown = document.getElementById('statusFilterDropdown');
-  if (!dropdown || dropdown.contains(event.target)) return;
-  toggleStatusDropdown(false);
-});
-
 function applyFilters() {
   const selectedSeverities = Array.from(document.querySelectorAll('.severity-filter:checked'))
     .map(cb => cb.value);
@@ -1260,7 +1229,6 @@ function clearFilters() {
   document.getElementById('tagFilter').value = '';
   selectedStatuses = [];
   renderStatusFilterOptions();
-  toggleStatusDropdown(false);
 
   currentData.filteredVulnerabilities = currentData.vulnerabilities;
   displayVulnerabilities(currentData.vulnerabilities);
