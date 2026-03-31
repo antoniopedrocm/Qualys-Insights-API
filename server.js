@@ -422,6 +422,10 @@ class QualysAPI {
         const detectionIdFromApi = detection.UNIQUE_VULN_ID || detection.VULN_INFO?.UNIQUE_VULN_ID || '';
         const detectionId = detectionIdFromApi;
         const uniqueVulnId = detectionIdFromApi;
+        const typeRaw = detection.TYPE ? String(detection.TYPE).toUpperCase() : '';
+        let typeDetected = '';
+        if (typeRaw === 'CONFIRMED') typeDetected = 'Confirmed';
+        else if (typeRaw === 'POTENTIAL') typeDetected = 'Potential';
         const detectionStatus = getDetectionStatusValue(detection);
         const isFixed = isDetectionFixed(detection);
 
@@ -435,6 +439,7 @@ class QualysAPI {
           os,
           qid,
           type: detection.TYPE || '',
+          typeDetected,
           severity: detection.SEVERITY || '',
           status: detectionStatus,
           detectionStatus,
