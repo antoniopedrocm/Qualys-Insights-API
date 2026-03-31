@@ -108,7 +108,12 @@ function parseTags(tagString) {
 }
 
 function getTypeDetectedValue(vuln) {
-  return vuln?.typeDetected || vuln?.type_detected || vuln?.vulnerabilities?.typeDetected || '';
+  const val = vuln?.typeDetected || vuln?.type || vuln?.type_detected || vuln?.vulnerabilities?.typeDetected || '';
+  if (!val) return '';
+  const upper = String(val).toUpperCase();
+  if (upper === 'CONFIRMED' || upper === 'CONFIRMADO') return 'Confirmed';
+  if (upper === 'POTENTIAL' || upper === 'POTENCIAL') return 'Potential';
+  return val;
 }
 
 function toggleTypeDetectedFilter(type, isChecked) {
@@ -1198,7 +1203,7 @@ function applyFilters() {
 
   let filtered = currentData.vulnerabilities;
   const hasStatusFilter = selectedStatuses.length > 0;
-  const hasTypeDetectedFilter = selectedTypeDetected.length < 2;
+  const hasTypeDetectedFilter = selectedTypeDetected.length > 0 && selectedTypeDetected.length < 2;
 
   const hasActiveFilters = selectedSeverities.length < 5 || quickSearch || qid || selectedTag || hasStatusFilter || hasTypeDetectedFilter;
 
@@ -1232,9 +1237,10 @@ function applyFilters() {
   }
   // Filtro de tipo de detecção
   if (selectedTypeDetected.length > 0) {
-    filtered = filtered.filter(v => selectedTypeDetected.includes(getTypeDetectedValue(v)));
-  } else {
-    filtered = [];
+    filtered = filtered.filter(v => {
+      const val = getTypeDetectedValue(v);
+      return val && selectedTypeDetected.includes(val);
+    });
   }
   // Filtro de Status
   if (hasStatusFilter) {
@@ -1264,8 +1270,7 @@ function clearFilters() {
   selectedStatuses = [];
   renderStatusFilterOptions();
 
-  currentData.filteredVulnerabilities = currentData.vulnerabilities;
-  displayVulnerabilities(currentData.vulnerabilities);
+  applyFilters();
   
   showMessage('Filtros limpos!', 'success');
 }
