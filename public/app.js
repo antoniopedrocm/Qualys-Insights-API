@@ -2,7 +2,7 @@ let charts = {};
 const DEFAULT_STATUS_ORDER = ['New', 'Active', 'Re-Opened', 'Fixed'];
 let selectedStatuses = [];
 let includeConfirmed = true;
-let includePotential = false;
+let includePotential = true;
 let currentData = {
   vulnerabilities: [],
   filteredVulnerabilities: [],
@@ -1262,11 +1262,11 @@ function clearFilters() {
   if (qidInput) qidInput.value = '';
   document.getElementById('tagFilter').value = '';
   includeConfirmed = true;
-  includePotential = false;
+  includePotential = true;
   const includeConfirmedCheckbox = document.getElementById('includeConfirmed');
   if (includeConfirmedCheckbox) includeConfirmedCheckbox.checked = true;
   const includePotentialCheckbox = document.getElementById('includePotential');
-  if (includePotentialCheckbox) includePotentialCheckbox.checked = false;
+  if (includePotentialCheckbox) includePotentialCheckbox.checked = true;
   selectedStatuses = [];
   renderStatusFilterOptions();
 
