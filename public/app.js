@@ -262,6 +262,8 @@ const dashboardState = {
   endDate: '',
   fixStartDate: '',
   fixEndDate: '',
+  includeConfirmed: true,
+  includePotential: true,
   vulnerabilities: []
 };
 
@@ -398,6 +400,21 @@ function applyDateFilters(vulnerabilities, mode, detectionRange, fixRange) {
   return filterByDate(vulnerabilities, detectionRange.startDate, detectionRange.endDate);
 }
 
+function filterDashboardByTypeDetected(vulnerabilities) {
+  const selectedTypes = [];
+  if (dashboardState.includeConfirmed) selectedTypes.push('Confirmed');
+  if (dashboardState.includePotential) selectedTypes.push('Potential');
+
+  if (selectedTypes.length === 0 || selectedTypes.length === 2) {
+    return vulnerabilities;
+  }
+
+  return vulnerabilities.filter((vuln) => {
+    const typeDetected = getTypeDetectedValue(vuln);
+    return selectedTypes.includes(typeDetected);
+  });
+}
+
 function severityKey(vuln) {
   const severity = String(vuln.severity || '').toUpperCase();
   if (severity === 'CRITICAL' || severity === '5') return 'critical';
@@ -479,7 +496,7 @@ function calcChartSeries(vulnerabilitiesFiltradas, trendDateSelector = getDetect
 function renderDashboardWithView() {
   const source = dashboardState.vulnerabilities;
   const isDetalhada = dashboardState.selectedView === 'detalhada';
-  const filtered = isDetalhada
+  const dateFiltered = isDetalhada
     ? applyDateFilters(
       source,
       dashboardState.dateFilterMode,
@@ -487,6 +504,9 @@ function renderDashboardWithView() {
       { startDate: dashboardState.fixStartDate, endDate: dashboardState.fixEndDate }
     )
     : source;
+  const filtered = isDetalhada
+    ? filterDashboardByTypeDetected(dateFiltered)
+    : dateFiltered;
 
   const trendDateSelector = isDetalhada && dashboardState.dateFilterMode === 'fix'
     ? getFixDate
@@ -530,6 +550,9 @@ function syncDashboardViewControls() {
   const fixRangeGroup = document.getElementById('fixDateRangeGroup');
   const detectionInputs = [document.getElementById('dashboardStartDate'), document.getElementById('dashboardEndDate')];
   const fixInputs = [document.getElementById('dashboardFixStartDate'), document.getElementById('dashboardFixEndDate')];
+  const typeDetectedGroup = document.getElementById('dashboardTypeDetectedFilters');
+  const includeConfirmedCheckbox = document.getElementById('dashboardIncludeConfirmed');
+  const includePotentialCheckbox = document.getElementById('dashboardIncludePotential');
   const isDetectionMode = dashboardState.dateFilterMode === 'detection';
   const isFixMode = dashboardState.dateFilterMode === 'fix';
   const isCombinedMode = dashboardState.dateFilterMode === 'combined';
@@ -537,6 +560,9 @@ function syncDashboardViewControls() {
   if (selector) selector.style.display = document.getElementById('dashboard').classList.contains('active') ? 'inline-flex' : 'none';
   if (dateFilter) dateFilter.style.display = isDetalhada ? 'block' : 'none';
   if (modeSelector) modeSelector.style.display = isDetalhada ? 'inline-flex' : 'none';
+  if (typeDetectedGroup) typeDetectedGroup.style.display = isDetalhada ? 'flex' : 'none';
+  if (includeConfirmedCheckbox) includeConfirmedCheckbox.checked = dashboardState.includeConfirmed;
+  if (includePotentialCheckbox) includePotentialCheckbox.checked = dashboardState.includePotential;
   if (geralBtn) {
     geralBtn.classList.toggle('active', !isDetalhada);
     geralBtn.setAttribute('aria-selected', String(!isDetalhada));
@@ -578,6 +604,18 @@ function syncDashboardViewControls() {
       if (input) input.disabled = false;
     });
   }
+}
+
+function toggleDashboardTypeDetectedFilter(type, isChecked) {
+  if (type === 'Confirmed') {
+    dashboardState.includeConfirmed = isChecked;
+  }
+
+  if (type === 'Potential') {
+    dashboardState.includePotential = isChecked;
+  }
+
+  renderDashboardWithView();
 }
 
 function setDashboardView(view) {
