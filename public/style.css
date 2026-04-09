@@ -194,8 +194,22 @@ body {
   margin-bottom: 24px;
 }
 
+.dashboard-date-filter-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .dashboard-date-filter .date-mode-selector {
   margin-bottom: 18px;
+}
+
+.dashboard-type-detected-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
 }
 
 .date-range-group {

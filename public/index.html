@@ -78,10 +78,22 @@
         </div>
 
         <div id="dashboardDateFilter" class="filter-section dashboard-date-filter" style="display:none;">
-          <div id="dateFilterModeSelector" class="dashboard-view-selector date-mode-selector" role="tablist" aria-label="Selecionar modo do filtro de data" style="display:none;">
-            <button class="view-option date-mode-option active" data-mode="detection" role="tab" aria-selected="true" onclick="setDashboardDateFilterMode('detection')">Somente Detecção</button>
-            <button class="view-option date-mode-option" data-mode="fix" role="tab" aria-selected="false" onclick="setDashboardDateFilterMode('fix')">Somente Correção</button>
-            <button class="view-option date-mode-option" data-mode="combined" role="tab" aria-selected="false" onclick="setDashboardDateFilterMode('combined')">Combinar Ambos</button>
+          <div class="dashboard-date-filter-top">
+            <div id="dateFilterModeSelector" class="dashboard-view-selector date-mode-selector" role="tablist" aria-label="Selecionar modo do filtro de data" style="display:none;">
+              <button class="view-option date-mode-option active" data-mode="detection" role="tab" aria-selected="true" onclick="setDashboardDateFilterMode('detection')">Somente Detecção</button>
+              <button class="view-option date-mode-option" data-mode="fix" role="tab" aria-selected="false" onclick="setDashboardDateFilterMode('fix')">Somente Correção</button>
+              <button class="view-option date-mode-option" data-mode="combined" role="tab" aria-selected="false" onclick="setDashboardDateFilterMode('combined')">Combinar Ambos</button>
+            </div>
+            <div id="dashboardTypeDetectedFilters" class="dashboard-type-detected-options" style="display:none;">
+              <label class="type-detected-option">
+                <input type="checkbox" id="dashboardIncludeConfirmed" checked onchange="toggleDashboardTypeDetectedFilter('Confirmed', this.checked)">
+                <span>Vulnerabilidades Confirmadas</span>
+              </label>
+              <label class="type-detected-option">
+                <input type="checkbox" id="dashboardIncludePotential" checked onchange="toggleDashboardTypeDetectedFilter('Potential', this.checked)">
+                <span>Vulnerabilidades em Potencial</span>
+              </label>
+            </div>
           </div>
           <div id="detectionDateRangeGroup" class="filter-grid date-range-group">
             <div class="filter-item">
