@@ -1,6 +1,7 @@
 let charts = {};
 const DEFAULT_STATUS_ORDER = ['New', 'Active', 'Re-Opened', 'Fixed'];
 let selectedStatuses = [];
+let selectedTags = [];
 let includeConfirmed = true;
 let includePotential = true;
 let currentData = {
@@ -99,6 +100,15 @@ function showLoading(show) {
   document.getElementById('loadingIndicator').style.display = show ? 'block' : 'none';
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function parseTags(tagString) {
   if (!tagString) return [];
   return tagString
@@ -176,10 +186,131 @@ function extractTagsFromVulns(vulnerabilities) {
 }
 
 function populateTagFilter(tags) {
-  const select = document.getElementById('tagFilter');
-  if (!select) return;
-  select.innerHTML = '<option value="">Todas as Tags</option>' +
-    tags.map(tag => `<option value="${tag}">${tag}</option>`).join('');
+  const menu = document.getElementById('tagFilterMenu');
+  if (!menu) return;
+
+  const availableTags = Array.isArray(tags) ? tags : [];
+  const availableTagKeys = new Set(availableTags.map(normalizeTagValue));
+  selectedTags = selectedTags.filter(tag => availableTagKeys.has(normalizeTagValue(tag)));
+  const selectedTagKeys = new Set(selectedTags.map(normalizeTagValue));
+
+  const tagOptions = availableTags.map((tag, index) => {
+    const optionId = `tagFilterOption${index}`;
+    const checked = selectedTagKeys.has(normalizeTagValue(tag)) ? 'checked' : '';
+    const selected = checked ? 'true' : 'false';
+
+    return `
+      <label class="tag-multiselect-option" role="option" aria-selected="${selected}" for="${optionId}">
+        <input
+          type="checkbox"
+          id="${optionId}"
+          value="${escapeHtml(tag)}"
+          ${checked}
+          onchange="toggleTagSelection(this.value, this.checked)"
+        >
+        <span>${escapeHtml(tag)}</span>
+      </label>
+    `;
+  }).join('');
+
+  menu.innerHTML = `
+    <label class="tag-multiselect-option tag-multiselect-all" role="option" aria-selected="${selectedTags.length === 0}" for="tagFilterAllOption">
+      <input
+        type="checkbox"
+        id="tagFilterAllOption"
+        ${selectedTags.length === 0 ? 'checked' : ''}
+        onchange="clearTagSelections()"
+      >
+      <span>Todas as Tags</span>
+    </label>
+    ${tagOptions}
+  `;
+
+  updateTagFilterSummary();
+}
+
+function normalizeTagValue(tag) {
+  return String(tag || '').trim().toLowerCase();
+}
+
+function getSelectedTags() {
+  return [...selectedTags];
+}
+
+function updateTagFilterSummary() {
+  const label = document.getElementById('tagFilterLabel');
+  if (label) {
+    if (selectedTags.length === 0) {
+      label.textContent = 'Todas as Tags';
+    } else if (selectedTags.length === 1) {
+      label.textContent = selectedTags[0];
+    } else {
+      label.textContent = `${selectedTags.length} tags selecionadas`;
+    }
+  }
+
+  const allOption = document.getElementById('tagFilterAllOption');
+  if (allOption) {
+    allOption.checked = selectedTags.length === 0;
+    allOption.closest('.tag-multiselect-option')?.setAttribute('aria-selected', String(selectedTags.length === 0));
+  }
+
+  document.querySelectorAll('#tagFilterMenu .tag-multiselect-option input[type="checkbox"]').forEach(input => {
+    input.closest('.tag-multiselect-option')?.setAttribute('aria-selected', String(input.checked));
+  });
+}
+
+function toggleTagSelection(tag, isChecked) {
+  const tagValue = String(tag || '').trim();
+  if (!tagValue) return;
+
+  const normalizedTag = normalizeTagValue(tagValue);
+  const storedTag = currentData.availableTags.find(availableTag => normalizeTagValue(availableTag) === normalizedTag) || tagValue;
+
+  if (isChecked && !selectedTags.some(selectedTag => normalizeTagValue(selectedTag) === normalizedTag)) {
+    selectedTags = [...selectedTags, storedTag];
+  }
+
+  if (!isChecked) {
+    selectedTags = selectedTags.filter(selectedTag => normalizeTagValue(selectedTag) !== normalizedTag);
+  }
+
+  updateTagFilterSummary();
+  applyFilters();
+}
+
+function clearTagSelections() {
+  selectedTags = [];
+  document.querySelectorAll('#tagFilterMenu input[type="checkbox"]').forEach(input => {
+    input.checked = false;
+  });
+  updateTagFilterSummary();
+  applyFilters();
+}
+
+function toggleTagFilterDropdown(forceOpen) {
+  const filter = document.getElementById('tagFilter');
+  const trigger = document.getElementById('tagFilterTrigger');
+  if (!filter || !trigger) return;
+
+  const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !filter.classList.contains('open');
+  filter.classList.toggle('open', shouldOpen);
+  trigger.setAttribute('aria-expanded', String(shouldOpen));
+}
+
+function setupTagFilterDropdown() {
+  document.addEventListener('click', event => {
+    const filter = document.getElementById('tagFilter');
+    if (filter && !filter.contains(event.target)) {
+      toggleTagFilterDropdown(false);
+    }
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      toggleTagFilterDropdown(false);
+    }
+  });
 }
 
 function getAvailableStatuses(vulnerabilities = []) {
@@ -1232,7 +1363,7 @@ function applyFilters() {
   const quickSearch = document.getElementById('quickSearch').value.toLowerCase().trim();
   const quickSearchUpper = quickSearch.toUpperCase();
   const qid = document.getElementById('filterQid')?.value.trim() || '';
-  const selectedTag = document.getElementById('tagFilter').value;
+  const selectedTagsForFilter = getSelectedTags();
   includeConfirmed = document.getElementById('includeConfirmed')?.checked ?? includeConfirmed;
   includePotential = document.getElementById('includePotential')?.checked ?? includePotential;
   const selectedTypeDetected = [];
@@ -1243,7 +1374,7 @@ function applyFilters() {
   const hasStatusFilter = selectedStatuses.length > 0;
   const hasTypeDetectedFilter = selectedTypeDetected.length > 0 && selectedTypeDetected.length < 2;
 
-  const hasActiveFilters = selectedSeverities.length < 5 || quickSearch || qid || selectedTag || hasStatusFilter || hasTypeDetectedFilter;
+  const hasActiveFilters = selectedSeverities.length < 5 || quickSearch || qid || selectedTagsForFilter.length > 0 || hasStatusFilter || hasTypeDetectedFilter;
 
   if (!hasActiveFilters) {
     currentData.filteredVulnerabilities = filtered;
@@ -1270,8 +1401,9 @@ function applyFilters() {
     filtered = filtered.filter(v => String(v.qid || '').includes(qid));
   }
   // Filtro de Tags cadastradas
-  if (selectedTag) {
-    filtered = filtered.filter(v => parseTags(v.hostTags).some(tag => tag.toLowerCase() === selectedTag.toLowerCase()));
+  if (selectedTagsForFilter.length > 0) {
+    const selectedTagKeys = new Set(selectedTagsForFilter.map(normalizeTagValue));
+    filtered = filtered.filter(v => parseTags(v.hostTags).some(tag => selectedTagKeys.has(normalizeTagValue(tag))));
   }
   // Filtro de tipo de detecção
   if (selectedTypeDetected.length > 0) {
@@ -1298,7 +1430,9 @@ function clearFilters() {
   document.getElementById('quickSearch').value = '';
   const qidInput = document.getElementById('filterQid');
   if (qidInput) qidInput.value = '';
-  document.getElementById('tagFilter').value = '';
+  selectedTags = [];
+  populateTagFilter(currentData.availableTags);
+  toggleTagFilterDropdown(false);
   includeConfirmed = true;
   includePotential = true;
   const includeConfirmedCheckbox = document.getElementById('includeConfirmed');
@@ -1583,6 +1717,7 @@ async function exportCSV() {
 
 // Carregar dashboard ao iniciar
 window.onload = () => {
+  setupTagFilterDropdown();
   syncDashboardViewControls();
   loadDashboard();
   clearEffectivenessView();

@@ -217,10 +217,21 @@
 
             <div class="filter-card">
               <div class="filter-card-title">Tags do Host</div>
-              <p class="filter-hint">Selecione uma tag cadastrada para filtrar os resultados.</p>
-              <select id="tagFilter" onchange="applyFilters()">
-                <option value="">Todas as Tags</option>
-              </select>
+              <p class="filter-hint">Selecione uma ou mais tags cadastradas para filtrar os resultados.</p>
+              <div class="tag-multiselect" id="tagFilter">
+                <button
+                  type="button"
+                  class="tag-multiselect-trigger"
+                  id="tagFilterTrigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                  onclick="toggleTagFilterDropdown()"
+                >
+                  <span id="tagFilterLabel">Todas as Tags</span>
+                  <span class="tag-multiselect-caret" aria-hidden="true"></span>
+                </button>
+                <div class="tag-multiselect-menu" id="tagFilterMenu" role="listbox" aria-multiselectable="true"></div>
+              </div>
             </div>
 
             <div class="filter-card">
