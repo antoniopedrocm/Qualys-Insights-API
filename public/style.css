@@ -465,6 +465,106 @@ input[type="date"]:focus {
   font-size: 0.9em;
 }
 
+.tag-multiselect {
+  position: relative;
+  width: 100%;
+}
+
+.tag-multiselect-trigger {
+  width: 100%;
+  min-height: 47px;
+  padding: 12px 14px;
+  background: var(--bg-dark-primary);
+  border: 1px solid var(--accent-blue);
+  border-radius: var(--border-radius);
+  color: var(--text-light-primary);
+  font-family: var(--font-family);
+  font-size: 1em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tag-multiselect-trigger:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 170, 255, 0.14);
+}
+
+.tag-multiselect-trigger span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-multiselect-caret {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-light-secondary);
+  border-bottom: 2px solid var(--text-light-secondary);
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+  flex: 0 0 auto;
+}
+
+.tag-multiselect.open .tag-multiselect-caret {
+  transform: rotate(225deg);
+}
+
+.tag-multiselect-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 330px;
+  overflow-y: auto;
+  background: var(--bg-dark-primary);
+  border: 1px solid var(--accent-blue);
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+  box-shadow: 0 18px 35px rgba(0, 0, 0, 0.34);
+  padding: 6px 0;
+  z-index: 50;
+}
+
+.tag-multiselect.open .tag-multiselect-menu {
+  display: block;
+}
+
+.tag-multiselect-option {
+  min-height: 30px;
+  padding: 7px 14px;
+  color: var(--text-light-primary);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.tag-multiselect-option:hover,
+.tag-multiselect-option[aria-selected="true"] {
+  background: var(--bg-dark-tertiary);
+}
+
+.tag-multiselect-option input {
+  accent-color: var(--accent-blue);
+  flex: 0 0 auto;
+}
+
+.tag-multiselect-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-multiselect-all {
+  border-bottom: 1px solid var(--bg-dark-tertiary);
+  margin-bottom: 4px;
+}
+
 .pill-group {
   display: flex;
   flex-wrap: wrap;
