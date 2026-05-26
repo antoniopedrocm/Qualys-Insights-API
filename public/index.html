@@ -3,77 +3,113 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Qualys Security Dashboard</title>
+  <title>Qualys Insights | Cyber Exposure Management</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="app-container">
-    <!-- Barra Lateral de Navegação -->
-    <nav class="sidebar">
+    <nav class="sidebar" aria-label="Navegação principal">
       <div class="sidebar-header">
-        <h1>🛡️ Q-Insights</h1>
-        <span>by Antonio Pedro</span>
+        <div class="brand-mark"><i data-lucide="shield-check"></i></div>
+        <div class="brand-copy">
+          <h1>Qualys <span>Insights</span></h1>
+          <p>Exposure Command</p>
+        </div>
+      </div>
+      <div class="workspace-card">
+        <p class="workspace-label">Workspace</p>
+        <strong>Cyber Exposure</strong>
+        <span class="workspace-status"><span class="status-dot"></span> Monitoramento ativo</span>
       </div>
       <ul class="nav-tabs">
-        <li><button class="tab-btn active" onclick="showTab('dashboard')">📊 Dashboard Executivo</button></li>
-        <li><button class="tab-btn" onclick="showTab('vulnerabilities')">🔴 Análise de Vulnerabilidades</button></li>
-        <li><button class="tab-btn" onclick="showTab('efetividade')">📈 Efetividade</button></li>
-        <li><button class="tab-btn" onclick="showTab('hosts')">💻 Inventário de Hosts</button></li>
-        <li><button class="tab-btn" onclick="showTab('scans')">🔍 Status dos Scans</button></li>
-        <li><button class="tab-btn" onclick="showTab('api')">⚙️ API Explorer</button></li>
+        <li class="nav-section-label">Exposure</li>
+        <li><button class="tab-btn active" onclick="showTab('dashboard')"><i data-lucide="layout-dashboard"></i><span>Dashboard Executivo</span></button></li>
+        <li><button class="tab-btn" onclick="showTab('vulnerabilities')"><i data-lucide="shield-alert"></i><span>Análise de Vulnerabilidades</span></button></li>
+        <li><button class="tab-btn" onclick="showTab('efetividade')"><i data-lucide="chart-no-axes-combined"></i><span>Efetividade</span></button></li>
+        <li class="nav-section-label">Operations</li>
+        <li><button class="tab-btn" onclick="showTab('hosts')"><i data-lucide="server"></i><span>Inventário de Hosts</span></button></li>
+        <li><button class="tab-btn" onclick="showTab('scans')"><i data-lucide="radar"></i><span>Status dos Scans</span></button></li>
+        <li><button class="tab-btn" onclick="showTab('api')"><i data-lucide="waypoints"></i><span>API Explorer</span></button></li>
       </ul>
+      <div class="sidebar-footer">
+        <p>Qualys API</p>
+        <div><span class="status-dot"></span> Data connector</div>
+      </div>
     </nav>
 
-    <!-- Conteúdo Principal -->
     <main class="main-content">
       <header class="main-header">
         <div class="header-title-group">
-          <h2 id="pageTitle">Dashboard Executivo</h2>
+          <div>
+            <p class="header-eyebrow">Vulnerability Intelligence</p>
+            <h2 id="pageTitle">Dashboard Executivo</h2>
+          </div>
           <div id="dashboardViewSelector" class="dashboard-view-selector" role="tablist" aria-label="Selecionar visão do dashboard">
             <button id="viewGeralBtn" class="view-option active" role="tab" aria-selected="true" onclick="setDashboardView('geral')">Visão Geral</button>
             <button id="viewDetalhadaBtn" class="view-option" role="tab" aria-selected="false" onclick="setDashboardView('detalhada')">Visão Detalhada</button>
           </div>
         </div>
         <div class="header-actions">
-          <button class="btn" id="refreshButton" onclick="loadDashboard()">🔄 Atualizar</button>
-          <button class="btn btn-secondary" onclick="exportExcel()">📊 Exportar Excel</button>
-          <button class="btn btn-secondary" onclick="exportCSV()">📄 Exportar CSV</button>
+          <div class="operational-badge"><span class="status-dot"></span> Operacional</div>
+          <button class="btn" id="refreshButton" onclick="loadDashboard()"><i data-lucide="refresh-cw"></i><span>Atualizar</span></button>
+          <button class="btn btn-secondary" onclick="exportExcel()" title="Exportar Excel"><i data-lucide="file-spreadsheet"></i><span>Excel</span></button>
+          <button class="btn btn-secondary" onclick="exportCSV()" title="Exportar CSV"><i data-lucide="download"></i><span>CSV</span></button>
         </div>
       </header>
 
       <div id="messages"></div>
       
       <div id="loadingIndicator" class="loading" style="display: none;">
-        <div class="spinner"></div>
-        <p>Carregando dados...</p>
+        <div class="loading-shell">
+          <div class="spinner"></div>
+          <div>
+            <strong>Sincronizando exposição</strong>
+            <p>Carregando dados de segurança...</p>
+          </div>
+        </div>
       </div>
 
       <!-- ====================== -->
       <!-- TAB: DASHBOARD         -->
       <!-- ====================== -->
       <div id="dashboard" class="tab-content active">
-        <!-- KPIs Principais -->
-        <div class="kpi-grid">
-          <div class="stat-card">
-            <h3>Total de Hosts</h3>
-            <div class="value" id="totalHosts">-</div>
+        <div class="section-header dashboard-header">
+          <div>
+            <p class="eyebrow">Executive Overview</p>
+            <h2>Postura de Exposição</h2>
+            <p class="filter-subtitle">Prioridade, cobertura de ativos e remediação em uma visão consolidada.</p>
           </div>
-          <div class="stat-card">
-            <h3>Total de Vulnerabilidades</h3>
+        </div>
+        <div class="kpi-grid">
+          <div class="stat-card metric-assets">
+            <div class="metric-header"><span class="metric-icon"><i data-lucide="server"></i></span><h3>Total de Hosts</h3></div>
+            <div class="value" id="totalHosts">-</div>
+            <p class="metric-detail">Ativos observados</p>
+          </div>
+          <div class="stat-card metric-exposure">
+            <div class="metric-header"><span class="metric-icon"><i data-lucide="scan-search"></i></span><h3>Total de Vulnerabilidades</h3></div>
             <div class="value" id="totalVulns">-</div>
+            <p class="metric-detail">Detecções priorizadas</p>
           </div>
           <div class="stat-card sev-critical">
-            <h3>Críticas</h3>
+            <div class="metric-header"><span class="metric-icon"><i data-lucide="shield-alert"></i></span><h3>Críticas</h3></div>
             <div class="value" id="criticalVulns">-</div>
+            <p class="metric-detail">Prioridade imediata</p>
           </div>
           <div class="stat-card sev-high">
-            <h3>Altas</h3>
+            <div class="metric-header"><span class="metric-icon"><i data-lucide="triangle-alert"></i></span><h3>Altas</h3></div>
             <div class="value" id="highVulns">-</div>
+            <p class="metric-detail">Risco elevado</p>
           </div>
           <div class="stat-card sev-medium">
-            <h3>Médias</h3>
+            <div class="metric-header"><span class="metric-icon"><i data-lucide="activity"></i></span><h3>Médias</h3></div>
             <div class="value" id="mediumVulns">-</div>
+            <p class="metric-detail">Acompanhamento</p>
           </div>
         </div>
 
@@ -122,44 +158,64 @@
         </div>
 
         <div id="dashboardChartsContent">
-        <!-- Gráficos Executivos -->
         <div class="charts-grid-col-2">
           <div class="chart-container">
-            <h2>Distribuição por Severidade</h2>
+            <div class="panel-heading">
+              <div><p class="eyebrow">Exposure Mix</p><h2>Distribuição por Severidade</h2></div>
+              <span class="panel-chip">Aberta</span>
+            </div>
             <div class="chart-wrapper">
               <canvas id="severityChart"></canvas>
             </div>
           </div>
           
           <div class="chart-container">
-            <h2>Tendência de Descobertas (Novas)</h2>
+            <div class="panel-heading">
+              <div><p class="eyebrow">Trend</p><h2>Tendência de Descobertas</h2></div>
+              <span class="panel-chip">Novas</span>
+            </div>
             <div class="chart-wrapper">
               <canvas id="trendsChart"></canvas>
             </div>
           </div>
         </div>
 
-        <!-- Gráficos por Ambiente -->
-        <h2 class="section-title">Vulnerabilidades por Ambiente (Críticas, Altas, Médias)</h2>
+        <div class="section-title">
+          <p class="eyebrow">Environment Exposure</p>
+          <h2>Vulnerabilidades por Ambiente</h2>
+          <p>Críticas, altas e médias</p>
+        </div>
         <div class="charts-grid-col-3">
-          <div class="chart-container">
-            <h2>🔧 Desenvolvimento e Qualidade</h2>
-            <canvas id="devQAChart"></canvas>
+          <div class="chart-container environment-card">
+            <div class="panel-heading">
+              <div><p class="eyebrow">DEV / QA</p><h2>Desenvolvimento e Qualidade</h2></div>
+              <i data-lucide="flask-conical"></i>
+            </div>
+            <div class="environment-chart"><canvas id="devQAChart"></canvas></div>
           </div>
           
-          <div class="chart-container">
-            <h2>⚠️ Produção Baixa</h2>
-            <canvas id="prdBaixaChart"></canvas>
+          <div class="chart-container environment-card">
+            <div class="panel-heading">
+              <div><p class="eyebrow">PROD</p><h2>Produção Baixa</h2></div>
+              <i data-lucide="shield-check"></i>
+            </div>
+            <div class="environment-chart"><canvas id="prdBaixaChart"></canvas></div>
           </div>
           
-          <div class="chart-container">
-            <h2>🔴 Produção Alta</h2>
-            <canvas id="prdAltaChart"></canvas>
+          <div class="chart-container environment-card priority">
+            <div class="panel-heading">
+              <div><p class="eyebrow">CRITICAL PROD</p><h2>Produção Alta</h2></div>
+              <i data-lucide="shield-alert"></i>
+            </div>
+            <div class="environment-chart"><canvas id="prdAltaChart"></canvas></div>
           </div>
         </div>
         
         <div class="chart-container">
-          <h2>Top 10 Vulnerabilidades (QIDs)</h2>
+          <div class="panel-heading">
+            <div><p class="eyebrow">Prioritization</p><h2>Top 10 Vulnerabilidades</h2></div>
+            <span class="panel-chip">QIDs</span>
+          </div>
           <div class="chart-wrapper-large">
             <canvas id="topVulnsChart"></canvas>
           </div>
@@ -174,19 +230,19 @@
         <div class="filter-section modern">
           <div class="filter-header">
             <div>
-              <p class="eyebrow">Segurança</p>
-              <h3>Filtros de Segurança</h3>
-              <p class="filter-subtitle">Combine severidade, busca rápida e tags para refinar a lista.</p>
+              <p class="eyebrow">Threat Analysis</p>
+              <h3>Investigação de Vulnerabilidades</h3>
+              <p class="filter-subtitle">Selecione sinais para priorização e análise operacional.</p>
             </div>
             <div class="filter-actions">
-              <button class="btn btn-secondary" onclick="clearFilters()">🗑️ Limpar</button>
-              <button class="btn" onclick="exportFiltered()">📥 Exportar CSV</button>
+              <button class="btn btn-secondary" onclick="clearFilters()"><i data-lucide="eraser"></i><span>Limpar</span></button>
+              <button class="btn" onclick="exportFiltered()"><i data-lucide="download"></i><span>Exportar CSV</span></button>
             </div>
           </div>
 
           <div class="filter-grid enhanced">
             <div class="filter-card severity-card">
-              <div class="filter-card-title">Severidade</div>
+              <div class="filter-card-title"><i data-lucide="shield-alert"></i> Severidade</div>
               <div class="checkbox-group pill-group">
                 <label class="pill critical"><input type="checkbox" class="severity-filter" value="5" checked onchange="applyFilters()"><span>Crítica</span></label>
                 <label class="pill high"><input type="checkbox" class="severity-filter" value="4" checked onchange="applyFilters()"><span>Alta</span></label>
@@ -197,12 +253,17 @@
             </div>
 
             <div class="filter-card">
-              <div class="filter-card-title">Busca Rápida</div>
+              <div class="filter-card-title"><i data-lucide="search"></i> Busca Rápida</div>
               <p class="filter-hint">Busque por IP, DNS, título, QID, CVE ou solução.</p>
               <div class="input-with-icon">
-                <span>🔎</span>
+                <i data-lucide="search"></i>
                 <input type="text" id="quickSearch" placeholder="Digite para filtrar" oninput="applyFilters()">
               </div>
+            </div>
+
+            <div class="filter-card">
+              <div class="filter-card-title"><i data-lucide="fingerprint"></i> Classificação</div>
+              <p class="filter-hint">Natureza da detecção identificada.</p>
               <div class="type-detected-options">
                 <label class="type-detected-option">
                   <input type="checkbox" id="includeConfirmed" checked onchange="toggleTypeDetectedFilter('Confirmed', this.checked)">
@@ -216,7 +277,7 @@
             </div>
 
             <div class="filter-card">
-              <div class="filter-card-title">Tags do Host</div>
+              <div class="filter-card-title"><i data-lucide="tags"></i> Tags do Host</div>
               <p class="filter-hint">Selecione uma ou mais tags cadastradas para filtrar os resultados.</p>
               <div class="tag-multiselect" id="tagFilter">
                 <button
@@ -235,18 +296,25 @@
             </div>
 
             <div class="filter-card">
-              <div class="filter-card-title">Status</div>
+              <div class="filter-card-title"><i data-lucide="circle-dot"></i> Status</div>
               <div class="status-filter-options status-filter-panel" id="statusFilterOptions"></div>
+            </div>
+
+            <div class="filter-card qid-card">
+              <div class="filter-card-title"><i data-lucide="binary"></i> QID</div>
+              <p class="filter-hint">Localize uma assinatura Qualys especifica.</p>
+              <input type="text" id="filterQid" placeholder="Ex.: 150453" oninput="applyFilters()">
             </div>
           </div>
         </div>
 
-        <div class="chart-container">
+        <div class="chart-container data-panel">
           <div class="table-header">
             <div>
-              <p class="eyebrow">Lista</p>
-              <h2>Vulnerabilidades (<span id="vulnCount">0</span> de <span id="vulnTotal">0</span>)</h2>
+              <p class="eyebrow">Finding Inventory</p>
+              <h2>Vulnerabilidades</h2>
             </div>
+            <div class="table-count"><strong id="vulnCount">0</strong><span>de <strong id="vulnTotal">0</strong> detecções</span></div>
           </div>
           <div class="table-container">
             <table>
@@ -278,62 +346,62 @@
       <div id="efetividade" class="tab-content">
         <div class="section-header">
           <div>
-            <p class="eyebrow">Nova Análise</p>
+            <p class="eyebrow">Remediation Intelligence</p>
             <h2>Efetividade das Correções</h2>
             <p class="filter-subtitle">Cole Detection IDs para identificar o que continua pendente e o que já foi corrigido.</p>
           </div>
         </div>
 
         <div class="filter-section effectiveness-input-card">
-          <h3>Detection IDs</h3>
+          <div class="filter-card-title"><i data-lucide="scan-line"></i> Detection IDs</div>
           <p class="filter-subtitle">Aceita IDs separados por quebra de linha, vírgula, ponto e vírgula, espaço e tabulação.</p>
           <textarea id="effectivenessInput" class="effectiveness-textarea" placeholder="Ex:&#10;6385789118&#10;6385789120, 6385789123"></textarea>
           <div class="filter-group-single">
-            <button class="btn" onclick="analyzeEffectiveness()">🔍 Analisar</button>
-            <button class="btn btn-secondary" onclick="clearEffectiveness()">🗑️ Limpar</button>
+            <button class="btn" onclick="analyzeEffectiveness()"><i data-lucide="scan-search"></i><span>Analisar</span></button>
+            <button class="btn btn-secondary" onclick="clearEffectiveness()"><i data-lucide="eraser"></i><span>Limpar</span></button>
           </div>
         </div>
 
         <div class="kpi-grid" id="efetividadeKpis" style="display: none;">
           <div class="stat-card">
-            <h3>Total IDs Informados</h3>
+            <div class="metric-header"><span class="metric-icon"><i data-lucide="list-checks"></i></span><h3>Total IDs Informados</h3></div>
             <div class="value" id="efetividadeTotal">0</div>
           </div>
-          <div class="stat-card sev-high">
-            <h3>Corrigidas</h3>
+          <div class="stat-card state-fixed">
+            <div class="metric-header"><span class="metric-icon"><i data-lucide="circle-check-big"></i></span><h3>Corrigidas</h3></div>
             <div class="value" id="efetividadeFixed">0</div>
           </div>
           <div class="stat-card sev-medium">
-            <h3>Pendentes</h3>
+            <div class="metric-header"><span class="metric-icon"><i data-lucide="timer"></i></span><h3>Pendentes</h3></div>
             <div class="value" id="efetividadeOpen">0</div>
           </div>
           <div class="stat-card sev-critical">
-            <h3>Inválidas</h3>
+            <div class="metric-header"><span class="metric-icon"><i data-lucide="circle-x"></i></span><h3>Inválidas</h3></div>
             <div class="value" id="efetividadeInvalid">0</div>
           </div>
         </div>
 
         <div class="charts-grid-col-2" id="efetividadeCharts" style="display: none;">
           <div class="chart-container">
-            <h2>Distribuição</h2>
+            <div class="panel-heading"><div><p class="eyebrow">Resolution</p><h2>Distribuição</h2></div></div>
             <div class="chart-wrapper">
               <canvas id="effectivenessDonutChart"></canvas>
             </div>
           </div>
           <div class="chart-container">
-            <h2>Comparativo</h2>
+            <div class="panel-heading"><div><p class="eyebrow">Comparison</p><h2>Comparativo</h2></div></div>
             <div class="chart-wrapper">
               <canvas id="effectivenessBarChart"></canvas>
             </div>
           </div>
           <div class="chart-container">
-            <h2>Severidade x Status</h2>
+            <div class="panel-heading"><div><p class="eyebrow">Risk State</p><h2>Severidade x Status</h2></div></div>
             <div class="chart-wrapper">
               <canvas id="effectivenessSeverityStatusChart"></canvas>
             </div>
           </div>
           <div class="chart-container">
-            <h2>Distribuição por Severidade</h2>
+            <div class="panel-heading"><div><p class="eyebrow">Severity</p><h2>Distribuição por Severidade</h2></div></div>
             <div class="chart-wrapper">
               <canvas id="effectivenessSeverityDistributionChart"></canvas>
             </div>
@@ -341,20 +409,23 @@
         </div>
 
         <div class="filter-section" id="efetividadeFilterSection" style="display: none;">
-          <h3>Filtros</h3>
+          <div class="filter-header compact">
+            <div><p class="eyebrow">Scope</p><h3>Filtros da Análise</h3></div>
+            <button class="btn btn-secondary" onclick="clearEffectivenessFilters()"><i data-lucide="eraser"></i><span>Limpar filtros</span></button>
+          </div>
           <div class="filter-grid enhanced">
             <div class="filter-card">
-              <div class="filter-card-title">Tags do Host</div>
+              <div class="filter-card-title"><i data-lucide="tags"></i> Tags do Host</div>
               <select id="effectivenessTagFilter" onchange="applyEffectivenessFilters()">
                 <option value="">Todas as Tags</option>
               </select>
             </div>
             <div class="filter-card">
-              <div class="filter-card-title">DNS</div>
+              <div class="filter-card-title"><i data-lucide="server"></i> DNS</div>
               <input type="text" id="effectivenessDnsFilter" placeholder="Filtrar por DNS" oninput="applyEffectivenessFilters()">
             </div>
             <div class="filter-card severity-card">
-              <div class="filter-card-title">Severidade</div>
+              <div class="filter-card-title"><i data-lucide="shield-alert"></i> Severidade</div>
               <div class="checkbox-group pill-group">
                 <label class="pill critical"><input type="checkbox" class="effectiveness-severity-filter" value="Crítica" checked onchange="applyEffectivenessFilters()"><span>Crítica</span></label>
                 <label class="pill high"><input type="checkbox" class="effectiveness-severity-filter" value="Alta" checked onchange="applyEffectivenessFilters()"><span>Alta</span></label>
@@ -364,15 +435,12 @@
               </div>
             </div>
           </div>
-          <div class="filter-actions">
-            <button class="btn btn-secondary" onclick="clearEffectivenessFilters()">🗑️ Limpar filtros</button>
-          </div>
         </div>
 
-        <div class="chart-container" id="efetividadeTableWrapper" style="display: none;">
+        <div class="chart-container data-panel" id="efetividadeTableWrapper" style="display: none;">
           <div class="table-header">
             <div>
-              <p class="eyebrow">Detalhamento</p>
+              <p class="eyebrow">Remediation Detail</p>
               <h2>Detection IDs analisados</h2>
             </div>
           </div>
@@ -401,17 +469,20 @@
       <!-- TAB: HOSTS             -->
       <!-- ====================== -->
       <div id="hosts" class="tab-content">
-        <div class="filter-section">
-          <h3>Busca de Servidores</h3>
+        <div class="section-header">
+          <div><p class="eyebrow">Asset Inventory</p><h2>Inventário de Hosts</h2><p class="filter-subtitle">Ativos monitorados e exposição associada.</p></div>
+        </div>
+        <div class="filter-section operations-toolbar">
+          <div class="filter-card-title"><i data-lucide="search"></i> Busca de Servidores</div>
           <div class="filter-group-single">
-            <input type="text" id="searchHost" placeholder="🔍 Buscar servidor (ex: SAP29, pratika, 10.62...)" onkeyup="filterHosts()">
-            <button class="btn btn-secondary" onclick="clearHostSearch()">🗑️ Limpar Busca</button>
-            <button class="btn" onclick="exportHosts()">📥 Exportar Hosts (CSV)</button>
+            <input type="text" id="searchHost" placeholder="Buscar servidor, DNS ou IP" onkeyup="filterHosts()">
+            <button class="btn btn-secondary" onclick="clearHostSearch()"><i data-lucide="eraser"></i><span>Limpar</span></button>
+            <button class="btn" onclick="exportHosts()"><i data-lucide="download"></i><span>Exportar Hosts</span></button>
           </div>
         </div>
 
-        <div class="chart-container">
-          <h2>Lista de Hosts (<span id="hostCount">0</span> de <span id="hostTotal">0</span>)</h2>
+        <div class="chart-container data-panel">
+          <div class="table-header"><div><p class="eyebrow">Asset Register</p><h2>Lista de Hosts</h2></div><div class="table-count"><strong id="hostCount">0</strong><span>de <strong id="hostTotal">0</strong> hosts</span></div></div>
           <div class="table-container">
             <table>
               <thead>
@@ -436,8 +507,11 @@
       <!-- TAB: SCANS             -->
       <!-- ====================== -->
       <div id="scans" class="tab-content">
-        <div class="chart-container">
-          <h2>Lista de Scans (<span id="scanCount">0</span>)</h2>
+        <div class="section-header">
+          <div><p class="eyebrow">Scan Operations</p><h2>Status dos Scans</h2><p class="filter-subtitle">Execuções recentes e cobertura de varredura.</p></div>
+        </div>
+        <div class="chart-container data-panel">
+          <div class="table-header"><div><p class="eyebrow">Execution Queue</p><h2>Lista de Scans</h2></div><div class="table-count"><strong id="scanCount">0</strong><span>execuções</span></div></div>
           <div class="table-container">
             <table>
               <thead>
@@ -460,8 +534,11 @@
       <!-- TAB: API EXPLORER      -->
       <!-- ====================== -->
       <div id="api" class="tab-content">
-        <div class="chart-container">
-          <h2>API Explorer</h2>
+        <div class="section-header">
+          <div><p class="eyebrow">Integration Surface</p><h2>API Explorer</h2><p class="filter-subtitle">Consulta operacional dos endpoints disponíveis.</p></div>
+        </div>
+        <div class="chart-container api-console">
+          <div class="panel-heading"><div><p class="eyebrow">Request Builder</p><h2>Endpoint</h2></div><span class="panel-chip">REST</span></div>
           <div class="filter-group-single" style="margin-bottom: 20px;">
             <select id="apiEndpoint" style="flex-grow: 1;">
               <option value="/api/health">GET /api/health (Health Check)</option>
@@ -470,7 +547,7 @@
               <option value="/api/hosts">GET /api/hosts</option>
               <option value="/api/scans">GET /api/scans</option>
             </select>
-            <button class="btn" onclick="testApiEndpoint()">🚀 Executar</button>
+            <button class="btn" onclick="testApiEndpoint()"><i data-lucide="play"></i><span>Executar</span></button>
           </div>
           <pre id="apiResponse" class="json-viewer">
             Selecione um endpoint e clique em Executar

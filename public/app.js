@@ -4,6 +4,9 @@ let selectedStatuses = [];
 let selectedTags = [];
 let includeConfirmed = true;
 let includePotential = true;
+let vulnerabilityRenderVersion = 0;
+const VULNERABILITY_RENDER_BATCH_SIZE = 160;
+let vulnerabilityRenderState = { version: 0, items: [], nextIndex: 0 };
 let currentData = {
   vulnerabilities: [],
   filteredVulnerabilities: [],
@@ -26,13 +29,41 @@ const EFFECTIVENESS_WINDOW_TAG_MATCHERS = {
   PRD_Alta: ['PRD_ALTA', 'PRODUCAO_ALTA', 'PRODUÇÃO_ALTA']
 };
 
-// Configurações globais do Chart.js para o tema escuro
-Chart.defaults.color = '#a0aec0';
-Chart.defaults.borderColor = '#1a223a';
+const UI_COLORS = Object.freeze({
+  blue: '#3588f6',
+  cyan: '#27c5d9',
+  critical: '#e35d67',
+  high: '#ef9361',
+  medium: '#e3bc62',
+  green: '#2db879',
+  muted: '#91a1b8',
+  text: '#edf3fb',
+  grid: 'rgba(42, 59, 85, 0.48)'
+});
+
+// Presentation tokens keep each chart consistent without changing its data contract.
+Chart.defaults.color = UI_COLORS.muted;
+Chart.defaults.borderColor = UI_COLORS.grid;
+Chart.defaults.font.family = '"Manrope", "Segoe UI", sans-serif';
+Chart.defaults.font.size = 11;
+Chart.defaults.animation.duration = 500;
 Chart.defaults.plugins.legend.position = 'bottom';
-Chart.defaults.plugins.legend.labels.color = '#f0f4f8';
+Chart.defaults.plugins.legend.labels.color = UI_COLORS.muted;
+Chart.defaults.plugins.legend.labels.usePointStyle = true;
+Chart.defaults.plugins.legend.labels.pointStyle = 'rectRounded';
+Chart.defaults.plugins.legend.labels.padding = 16;
+Chart.defaults.plugins.tooltip.backgroundColor = '#111b2c';
+Chart.defaults.plugins.tooltip.borderColor = '#2a3b55';
+Chart.defaults.plugins.tooltip.borderWidth = 1;
+Chart.defaults.plugins.tooltip.padding = 11;
+Chart.defaults.plugins.tooltip.titleColor = UI_COLORS.text;
+Chart.defaults.plugins.tooltip.bodyColor = UI_COLORS.muted;
 
 function showTab(tabName) {
+  if (tabName !== 'vulnerabilities') {
+    vulnerabilityRenderVersion += 1;
+  }
+
   document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
 
@@ -55,7 +86,11 @@ function showTab(tabName) {
     pageTitle.textContent = 'Análise de Vulnerabilidades';
     refreshButton.style.display = 'block';
     refreshButton.onclick = loadVulnerabilities;
-    if (currentData.vulnerabilities.length === 0) loadVulnerabilities();
+    if (currentData.vulnerabilities.length === 0) {
+      loadVulnerabilities();
+    } else {
+      displayVulnerabilities(currentData.filteredVulnerabilities);
+    }
   } else if (tabName === 'efetividade') {
     pageTitle.textContent = 'Efetividade';
     refreshButton.style.display = 'none';
@@ -98,6 +133,7 @@ function showMessage(message, type = 'error') {
 
 function showLoading(show) {
   document.getElementById('loadingIndicator').style.display = show ? 'block' : 'none';
+  document.body.classList.toggle('is-loading', show);
 }
 
 function escapeHtml(value) {
@@ -832,7 +868,7 @@ async function loadDashboard() {
 }
 
 function updateCharts(summary, trends) {
-  const sevColors = ['#e63946', '#f77f00', '#fbc02d']; // Crítico, Alto, Médio
+  const sevColors = [UI_COLORS.critical, UI_COLORS.high, UI_COLORS.medium];
 
   // --- Gráfico de Severidade (Doughnut) ---
   if (charts.severity) charts.severity.destroy();
@@ -849,12 +885,15 @@ function updateCharts(summary, trends) {
         ],
         backgroundColor: sevColors,
         borderWidth: 0,
+        spacing: 3,
+        hoverOffset: 5
       }]
     },
     options: { 
       responsive: true, 
       maintainAspectRatio: false,
-      plugins: { legend: { position: 'right' } } 
+      cutout: '70%',
+      plugins: { legend: { position: 'right' } }
     }
   });
 
@@ -868,8 +907,10 @@ function updateCharts(summary, trends) {
       datasets: [{
         label: 'Ocorrências',
         data: summary.topVulnerabilities.map(v => v.count),
-        backgroundColor: '#00aaff',
-        borderRadius: 4,
+        backgroundColor: UI_COLORS.blue,
+        hoverBackgroundColor: UI_COLORS.cyan,
+        borderRadius: 6,
+        borderSkipped: false
       }]
     },
     options: {
@@ -878,7 +919,7 @@ function updateCharts(summary, trends) {
       indexAxis: 'y', // Gráfico de barra horizontal para melhor leitura
       plugins: { legend: { display: false } },
       scales: { 
-        x: { beginAtZero: true, grid: { color: '#1a223a' } },
+        x: { beginAtZero: true, grid: { color: UI_COLORS.grid } },
         y: { grid: { display: false } }
       }
     }
@@ -886,18 +927,20 @@ function updateCharts(summary, trends) {
 
   const barChartOptions = (title) => ({
     responsive: true,
-    maintainAspectRatio: true,
+    maintainAspectRatio: false,
     plugins: {
-      legend: { display: true, labels: { color: '#f0f4f8' } },
+      legend: { display: true, labels: { color: UI_COLORS.muted } },
       title: {
         display: true,
         text: title,
-        color: '#f0f4f8'
+        color: UI_COLORS.muted,
+        font: { size: 11, weight: '500' },
+        padding: { bottom: 14 }
       }
     },
     scales: {
       x: { stacked: true, grid: { display: false } },
-      y: { stacked: true, beginAtZero: true, grid: { color: '#1a223a' } }
+      y: { stacked: true, beginAtZero: true, grid: { color: UI_COLORS.grid } }
     }
   });
 
@@ -926,7 +969,8 @@ function updateCharts(summary, trends) {
             summary.tagDistribution?.DEV_QA?.high?.corrigidas || 0,
             summary.tagDistribution?.DEV_QA?.medium?.corrigidas || 0
           ],
-          backgroundColor: '#22c55e',
+          backgroundColor: UI_COLORS.green,
+          borderRadius: 5,
           stack: 'vulnerabilidades'
         }
       ]
@@ -959,7 +1003,8 @@ function updateCharts(summary, trends) {
             summary.tagDistribution?.PRD_Baixa?.high?.corrigidas || 0,
             summary.tagDistribution?.PRD_Baixa?.medium?.corrigidas || 0
           ],
-          backgroundColor: '#22c55e',
+          backgroundColor: UI_COLORS.green,
+          borderRadius: 5,
           stack: 'vulnerabilidades'
         }
       ]
@@ -992,7 +1037,8 @@ function updateCharts(summary, trends) {
             summary.tagDistribution?.PRD_Alta?.high?.corrigidas || 0,
             summary.tagDistribution?.PRD_Alta?.medium?.corrigidas || 0
           ],
-          backgroundColor: '#22c55e',
+          backgroundColor: UI_COLORS.green,
+          borderRadius: 5,
           stack: 'vulnerabilidades'
         }
       ]
@@ -1010,12 +1056,14 @@ function updateCharts(summary, trends) {
       datasets: [{
         label: 'Vulnerabilidades Descobertas',
         data: trends.trends.map(t => t.count),
-        borderColor: '#00f0e0', // Ciano
-        backgroundColor: 'rgba(0, 240, 224, 0.1)',
-        tension: 0.3,
+        borderColor: UI_COLORS.cyan,
+        backgroundColor: 'rgba(39, 197, 217, 0.08)',
+        tension: 0.35,
         fill: true,
-        pointRadius: 2,
-        pointBackgroundColor: '#00f0e0',
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointBackgroundColor: UI_COLORS.cyan
       }]
     },
     options: {
@@ -1023,7 +1071,7 @@ function updateCharts(summary, trends) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: { 
-        y: { beginAtZero: true, grid: { color: '#1a223a' } },
+        y: { beginAtZero: true, grid: { color: UI_COLORS.grid } },
         x: { grid: { display: false } }
       }
     }
@@ -1078,9 +1126,9 @@ function statusLabel(status) {
 }
 
 function statusClass(status) {
-  if (status === 'open') return 'severity-high';
-  if (status === 'fixed') return 'severity-low';
-  return 'severity-critical';
+  if (status === 'open') return 'status-badge open';
+  if (status === 'fixed') return 'status-badge fixed';
+  return 'status-badge invalid';
 }
 
 function formatLastSeen(value) {
@@ -1130,11 +1178,13 @@ function buildEffectivenessCharts(data, items) {
       labels: ['Corrigidas', 'Pendentes', 'Inválidas'],
       datasets: [{
         data: [summary.fixed, summary.open, summary.invalid],
-        backgroundColor: ['#2ecc71', '#f1c40f', '#e63946'],
-        borderWidth: 0
+        backgroundColor: [UI_COLORS.green, UI_COLORS.medium, UI_COLORS.critical],
+        borderWidth: 0,
+        spacing: 3,
+        hoverOffset: 5
       }]
     },
-    options: { responsive: true, maintainAspectRatio: false }
+    options: { responsive: true, maintainAspectRatio: false, cutout: '70%' }
   });
 
   if (charts.effectivenessBar) charts.effectivenessBar.destroy();
@@ -1145,15 +1195,16 @@ function buildEffectivenessCharts(data, items) {
       labels: ['Corrigidas', 'Pendentes', 'Inválidas'],
       datasets: [{
         data: [summary.fixed, summary.open, summary.invalid],
-        backgroundColor: ['#2ecc71', '#f1c40f', '#e63946'],
-        borderRadius: 4
+        backgroundColor: [UI_COLORS.green, UI_COLORS.medium, UI_COLORS.critical],
+        borderRadius: 6,
+        borderSkipped: false
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
-      scales: { y: { beginAtZero: true, grid: { color: '#1a223a' } }, x: { grid: { display: false } } }
+      scales: { y: { beginAtZero: true, grid: { color: UI_COLORS.grid } }, x: { grid: { display: false } } }
     }
   });
 
@@ -1173,11 +1224,11 @@ function buildEffectivenessCharts(data, items) {
     data: {
       labels: severities,
       datasets: [
-        { label: 'Pendentes', data: sevStatus.map((v) => v.open), backgroundColor: '#f1c40f' },
-        { label: 'Corrigidas', data: sevStatus.map((v) => v.fixed), backgroundColor: '#2ecc71' }
+        { label: 'Pendentes', data: sevStatus.map((v) => v.open), backgroundColor: UI_COLORS.medium, borderRadius: 5 },
+        { label: 'Corrigidas', data: sevStatus.map((v) => v.fixed), backgroundColor: UI_COLORS.green, borderRadius: 5 }
       ]
     },
-    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { color: UI_COLORS.grid } }, x: { grid: { display: false } } } }
   });
 
   const severityDistribution = severities.map((severity) => items.filter((item) => item.severity === severity).length);
@@ -1191,10 +1242,12 @@ function buildEffectivenessCharts(data, items) {
       labels: others > 0 ? [...severities, 'Outros'] : severities,
       datasets: [{
         data: others > 0 ? [...severityDistribution, others] : severityDistribution,
-        backgroundColor: ['#e63946', '#ff8c42', '#f1c40f', '#6b7280']
+        backgroundColor: [UI_COLORS.critical, UI_COLORS.high, UI_COLORS.medium, UI_COLORS.muted],
+        borderWidth: 0,
+        spacing: 3
       }]
     },
-    options: { responsive: true, maintainAspectRatio: false }
+    options: { responsive: true, maintainAspectRatio: false, cutout: '70%' }
   });
 }
 
@@ -1207,7 +1260,7 @@ function populateEffectivenessFilters(data) {
 function renderEffectivenessTable(items) {
   document.getElementById('efetividadeTableBody').innerHTML = items.map((item) => `
     <tr>
-      <td>${item.detectionId}</td>
+      <td><span class="record-id">${item.detectionId}</span></td>
       <td class="${statusClass(item.status)}">${statusLabel(item.status)}</td>
       <td>${item.dns || '-'}</td>
       <td>${item.ip || '-'}</td>
@@ -1333,27 +1386,66 @@ async function loadVulnerabilities() {
   }
 }
 
-function displayVulnerabilities(vulns) {
+function buildVulnerabilityRows(vulns) {
   const severityLabel = { '5': 'Crítica', '4': 'Alta', '3': 'Média', '2': 'Baixa', '1': 'Info' };
-  const severityClass = { '5': 'critical', '4': 'high', '3': 'medium', '2': 'low', '1': 'low' };
+  const severityClass = { '5': 'critical', '4': 'high', '3': 'medium', '2': 'low', '1': 'info' };
+
+  return vulns.map(v => `
+      <tr>
+        <td><span class="record-id">${getOfficialDetectionId(v)}</span></td>
+        <td>${v.hostDns || ''}</td>
+        <td>${v.hostIp || ''}</td>
+        <td>${v.os || ''}</td>
+        <td>${v.title || ''}</td>
+        <td>${v.solution || ''}</td>
+        <td>${v.results || ''}</td>
+        <td><span class="severity-badge severity-${severityClass[v.severity]}">${severityLabel[v.severity] || v.severity}</span></td>
+        <td><span class="status-badge status-${String(v.status || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')}">${v.status || ''}</span></td>
+        <td>${v.qid || ''}</td>
+        <td>${v.port || ''}</td>
+        <td>${v.firstFound ? v.firstFound.split('T')[0] : ''}</td>
+      </tr>
+    `).join('');
+}
+
+function appendVulnerabilityRows() {
+  if (vulnerabilityRenderState.version !== vulnerabilityRenderVersion) return;
+
+  const { items, nextIndex } = vulnerabilityRenderState;
+  if (nextIndex >= items.length) return;
+
+  const endIndex = Math.min(nextIndex + VULNERABILITY_RENDER_BATCH_SIZE, items.length);
+  const tableBody = document.getElementById('vulnTableBody');
+  tableBody.insertAdjacentHTML('beforeend', buildVulnerabilityRows(items.slice(nextIndex, endIndex)));
+  vulnerabilityRenderState.nextIndex = endIndex;
+}
+
+function setupVulnerabilityTableRendering() {
+  const container = document.querySelector('#vulnerabilities .table-container');
+  if (!container) return;
+
+  container.addEventListener('scroll', () => {
+    const remainingScroll = container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (remainingScroll < 240) {
+      appendVulnerabilityRows();
+    }
+  });
+}
+
+function displayVulnerabilities(vulns) {
+  const tableBody = document.getElementById('vulnTableBody');
+  const container = tableBody.closest('.table-container');
 
   document.getElementById('vulnCount').textContent = vulns.length;
-  document.getElementById('vulnTableBody').innerHTML = vulns.map(v => `
-    <tr>
-      <td>${getOfficialDetectionId(v)}</td>
-      <td>${v.hostDns || ''}</td>
-      <td>${v.hostIp || ''}</td>
-      <td>${v.os || ''}</td>
-      <td>${v.title || ''}</td>
-      <td>${v.solution || ''}</td>
-      <td>${v.results || ''}</td>
-      <td class="severity-${severityClass[v.severity]}">${severityLabel[v.severity] || v.severity}</td>
-      <td>${v.status || ''}</td>
-      <td>${v.qid || ''}</td>
-      <td>${v.port || ''}</td>
-      <td>${v.firstFound ? v.firstFound.split('T')[0] : ''}</td>
-    </tr>
-  `).join('');
+  tableBody.innerHTML = '';
+  if (container) container.scrollTop = 0;
+
+  vulnerabilityRenderState = {
+    version: ++vulnerabilityRenderVersion,
+    items: vulns,
+    nextIndex: 0
+  };
+  appendVulnerabilityRows();
 }
 
 function applyFilters() {
@@ -1544,8 +1636,7 @@ function displayHosts(hosts) {
         <td>${h.netbios || '-'}</td>
         <td>${h.tags || '-'}</td>
         <td style="text-align: center;">
-          <span class="vuln-count-badge severity-${vulnClass}" 
-                style="background-color: var(--sev-${vulnClass})">
+          <span class="vuln-count-badge severity-${vulnClass}">
             ${h.vulnCount}
           </span>
         </td>
@@ -1632,11 +1723,11 @@ async function loadScans() {
     document.getElementById('scanCount').textContent = data.total || 0;
     document.getElementById('scanTableBody').innerHTML = (data.data || []).map(s => `
       <tr>
-        <td>${s.ref || ''}</td>
+        <td><span class="record-id">${s.ref || ''}</span></td>
         <td>${s.title || ''}</td>
         <td>${s.type || ''}</td>
         <td>${s.launchDate || ''}</td>
-        <td>${s.state || ''}</td>
+        <td><span class="status-badge status-${String(s.state || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')}">${s.state || ''}</span></td>
         <td>${s.target || ''}</td>
       </tr>
     `).join('');
@@ -1715,9 +1806,17 @@ async function exportCSV() {
   }
 }
 
+function renderIcons() {
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+}
+
 // Carregar dashboard ao iniciar
 window.onload = () => {
+  renderIcons();
   setupTagFilterDropdown();
+  setupVulnerabilityTableRendering();
   syncDashboardViewControls();
   loadDashboard();
   clearEffectivenessView();
