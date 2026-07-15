@@ -30,6 +30,7 @@ secrets.json
 *.log
 npm-debug.log*
 logs/
+.webapp.*
 
 # Sistema operacional
 .DS_Store
