@@ -23,7 +23,7 @@ async function testCredentials() {
           'X-Requested-With': 'API'
         },
         httpsAgent: new https.Agent({  
-          rejectUnauthorized: false
+          rejectUnauthorized: true
         })
       });
 

@@ -35,7 +35,7 @@ if (!QUALYS_CONFIG.username || !QUALYS_CONFIG.password) {
 
 const auth = basicAuth({
   users: { 
-    [process.env.API_USERNAME || 'admin']: process.env.API_PASSWORD || 'admin123' 
+    [process.env.API_USERNAME || 'admin']: process.env.API_PASSWORD || 'LEGACY_PASSWORD_REMOVED' 
   },
   challenge: true,
   realm: 'Qualys API'
@@ -141,7 +141,7 @@ const qualysClient = axios.create({
     'X-Requested-With': 'API'
   },
   httpsAgent: new https.Agent({  
-    rejectUnauthorized: false
+    rejectUnauthorized: true
   })
 });
 
@@ -678,6 +678,75 @@ const normalizeTagString = (tags = '') => String(tags)
   .replace(/\s+/g, '_')
   .replace(/\//g, '_');
 
+const normalizeText = (value = '') => String(value || '').toUpperCase();
+const stripAccents = (value = '') => normalizeText(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const toSearchBlob = (vuln = {}) => {
+  const parts = [
+    vuln.os,
+    vuln.hostTags,
+    vuln.hostname,
+    vuln.hostDns,
+    vuln.title,
+    vuln.qid
+  ];
+  return stripAccents(parts.filter(Boolean).join(' '));
+};
+
+const hasAnyTerm = (blob, terms = []) => terms.some(term => blob.includes(stripAccents(term)));
+
+const classifyOwner = (vuln = {}) => {
+  const blob = toSearchBlob(vuln);
+
+  const legacyTerms = [
+    'WINDOWS SERVER 2008', 'WINDOWS 2008', 'SERVER 2008',
+    'WINDOWS SERVER 2012', 'WINDOWS 2012', 'SERVER 2012',
+    '2012 R2', 'LEGADO', 'LEGACY'
+  ];
+  if (hasAnyTerm(blob, legacyTerms)) return 'Legados';
+
+  const dbTerms = [
+    'ORACLE', 'SQL SERVER', 'MSSQL', 'MYSQL', 'MARIADB',
+    'POSTGRESQL', 'POSTGRES', 'DATABASE', 'BANCO', 'DBA', 'ORA', ' SQL ', ' DB '
+  ];
+  if (hasAnyTerm(` ${blob} `, dbTerms)) return 'Banco de Dados';
+
+  const appsTerms = ['AMS', 'APLICACAO', 'APLICAÇÃO', 'APPLICATION', 'APP', 'SISTEMA'];
+  if (hasAnyTerm(blob, appsTerms)) return 'Aplicações_AMS';
+
+  const windowsTerms = ['WINDOWS', 'MICROSOFT WINDOWS'];
+  if (hasAnyTerm(blob, windowsTerms)) return 'Windows';
+
+  const linuxTerms = ['LINUX', 'SLES', 'SUSE', 'UBUNTU', 'RED HAT', 'RHEL', 'CENTOS', 'DEBIAN'];
+  if (hasAnyTerm(blob, linuxTerms)) return 'Linux';
+
+  return 'Infraestrutura';
+};
+
+const classifyEnvironment = (vuln = {}) => {
+  const blob = toSearchBlob(vuln);
+  if (hasAnyTerm(blob, ['PRD_ALTA', 'PRD ALTA', 'PRODUCAO_ALTA', 'PRODUÇÃO_ALTA', 'PRODUCAO ALTA', 'PRODUÇÃO ALTA'])) return 'PRD_Alta';
+  if (hasAnyTerm(blob, ['PRD_BAIXA', 'PRD BAIXA', 'PRODUCAO_BAIXA', 'PRODUÇÃO_BAIXA', 'PRODUCAO BAIXA', 'PRODUÇÃO BAIXA'])) return 'PRD_Baixa';
+  if (hasAnyTerm(blob, ['DEV_QA', 'DEV_QAS', 'DEV QA', 'DEV QAS', 'DESENVOLVIMENTO', 'QUALIDADE', 'QA', 'HML', 'HOMOLOGAÇÃO', 'HOMOLOGACAO'])) return 'DEV_QAs';
+  return 'Não classificado';
+};
+
+const calculatePriority = (vuln = {}) => {
+  const severity = Number(vuln.severity || 0);
+  const environment = classifyEnvironment(vuln);
+  const tagsBlob = stripAccents(`${vuln.hostTags || ''} ${vuln.tags || ''}`);
+  const internetExposed = hasAnyTerm(tagsBlob, ['INTERNET', 'EXTERNO', 'EXTERNAL', 'PUBLICO', 'PÚBLICO']);
+
+  if (severity === 5 && (environment === 'PRD_Alta' || internetExposed)) return 'P0';
+  if (severity === 5 && environment === 'PRD_Baixa') return 'P1';
+  if (severity === 4 && environment === 'PRD_Alta') return 'P1';
+  if (severity === 4 && environment === 'PRD_Baixa') return 'P2';
+  if (severity === 5 && environment === 'DEV_QAs') return 'P2';
+  if (severity === 4 && environment === 'DEV_QAs') return 'P3';
+  if (severity === 3) return 'P3';
+  if (severity === 1 || severity === 2) return 'P4';
+  return 'Não classificado';
+};
+
 const readDetectionIdsFromCSV = async () => {
   const filePath = path.join(__dirname, 'detection_ids.csv');
 
@@ -770,28 +839,85 @@ const buildDetectionsCsv = (detections) => {
 
 const buildDetectionsWorkbook = async (detections) => {
   const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('Detections');
+  const enriched = detections.map((d) => ({
+    ...d,
+    priority: calculatePriority(d),
+    ownerArea: classifyOwner(d),
+    environment: classifyEnvironment(d)
+  }));
+  const worksheet = workbook.addWorksheet('Base Completa');
 
   worksheet.columns = [
-    { header: 'Host IP', key: 'hostIp', width: 15 },
-    { header: 'Host DNS', key: 'hostDns', width: 30 },
-    { header: 'Tags', key: 'hostTags', width: 30 },
-    { header: 'OS', key: 'os', width: 30 },
-    { header: 'QID', key: 'qid', width: 10 },
-    { header: 'Severity', key: 'severity', width: 10 },
-    { header: 'Status', key: 'status', width: 15 },
-    { header: 'First Found', key: 'firstFound', width: 22 },
-    { header: 'Last Found', key: 'lastFound', width: 22 },
-    { header: 'Title', key: 'title', width: 50 },
-    { header: 'Solution', key: 'solution', width: 80 }
+    { header: 'priority', key: 'priority', width: 10 },
+    { header: 'ownerArea', key: 'ownerArea', width: 18 },
+    { header: 'environment', key: 'environment', width: 16 },
+    { header: 'detectionId', key: 'detectionId', width: 20 },
+    { header: 'uniqueVulnId', key: 'uniqueVulnId', width: 20 },
+    { header: 'hostDns', key: 'hostDns', width: 30 },
+    { header: 'hostIp', key: 'hostIp', width: 15 },
+    { header: 'os', key: 'os', width: 25 },
+    { header: 'hostTags', key: 'hostTags', width: 30 },
+    { header: 'qid', key: 'qid', width: 10 },
+    { header: 'title', key: 'title', width: 50 },
+    { header: 'severity', key: 'severity', width: 10 },
+    { header: 'status', key: 'status', width: 14 },
+    { header: 'typeDetected', key: 'typeDetected', width: 14 },
+    { header: 'firstFound', key: 'firstFound', width: 22 },
+    { header: 'lastFound', key: 'lastFound', width: 22 },
+    { header: 'port', key: 'port', width: 8 },
+    { header: 'protocol', key: 'protocol', width: 10 },
+    { header: 'ssl', key: 'ssl', width: 8 },
+    { header: 'results', key: 'results', width: 60 },
+    { header: 'solution', key: 'solution', width: 60 }
   ];
 
-  detections.forEach(detection => worksheet.addRow(detection));
+  enriched.forEach(detection => worksheet.addRow(detection));
 
   worksheet.getRow(1).font = { bold: true };
   worksheet.columns.forEach(column => {
     column.alignment = { wrapText: true };
   });
+
+  const byFilter = (key, value) => enriched.filter((item) => item[key] === value);
+  const addSimpleSheet = (name, rows) => {
+    const ws = workbook.addWorksheet(name);
+    ws.columns = worksheet.columns;
+    rows.forEach(r => ws.addRow(r));
+  };
+
+  addSimpleSheet('Top Prioridades', enriched.filter(v => ['P0', 'P1'].includes(v.priority)));
+  addSimpleSheet('PRD_Alta', byFilter('environment', 'PRD_Alta'));
+  addSimpleSheet('PRD_Baixa', byFilter('environment', 'PRD_Baixa'));
+  addSimpleSheet('DEV_QAs', byFilter('environment', 'DEV_QAs'));
+  addSimpleSheet('Windows', byFilter('ownerArea', 'Windows'));
+  addSimpleSheet('Linux', byFilter('ownerArea', 'Linux'));
+  addSimpleSheet('Banco de Dados', byFilter('ownerArea', 'Banco de Dados'));
+  addSimpleSheet('Aplicações_AMS', byFilter('ownerArea', 'Aplicações_AMS'));
+  addSimpleSheet('Infraestrutura', byFilter('ownerArea', 'Infraestrutura'));
+  addSimpleSheet('Legados', byFilter('ownerArea', 'Legados'));
+
+  const resumo = workbook.addWorksheet('Resumo Executivo');
+  const countBy = (arr, key) => arr.reduce((acc, item) => {
+    const value = item[key] || 'Não classificado';
+    acc[value] = (acc[value] || 0) + 1;
+    return acc;
+  }, {});
+  const topEntries = (arr, key, n = 10) => Object.entries(countBy(arr, key)).sort((a, b) => b[1] - a[1]).slice(0, n);
+  const addSection = (title, entries) => {
+    resumo.addRow([title]);
+    entries.forEach(([k, v]) => resumo.addRow([k, v]));
+    resumo.addRow([]);
+  };
+  resumo.addRow(['Data/Hora geração', new Date().toISOString()]);
+  resumo.addRow(['Total geral', enriched.length]);
+  resumo.addRow([]);
+  addSection('Total por severidade', Object.entries(countBy(enriched, 'severity')));
+  addSection('Total por prioridade', Object.entries(countBy(enriched, 'priority')));
+  addSection('Total por ambiente', Object.entries(countBy(enriched, 'environment')));
+  addSection('Total por área responsável', Object.entries(countBy(enriched, 'ownerArea')));
+  addSection('Total por status', Object.entries(countBy(enriched, 'status')));
+  addSection('Top 10 QIDs', topEntries(enriched, 'qid', 10));
+  addSection('Top 10 Hosts', topEntries(enriched, 'hostDns', 10));
 
   return workbook;
 };
@@ -1431,6 +1557,6 @@ app.get('*', (req, res) => {
 app.listen(PORT, () => {
   console.log(`\n🚀 API Qualys rodando na porta ${PORT}`);
   console.log(`📊 Dashboard: http://localhost:${PORT}`);
-  console.log(`🔐 Credenciais da API Web: ${process.env.API_USERNAME || 'admin'} / ${process.env.API_PASSWORD || 'admin123'}`);
+  console.log(`🔐 Credenciais da API Web: ${process.env.API_USERNAME || 'admin'} / ${process.env.API_PASSWORD || 'LEGACY_PASSWORD_REMOVED'}`);
   console.log(`✅ Qualys conectado: ${QUALYS_CONFIG.username ? 'Sim' : 'Não'}\n`);
 });

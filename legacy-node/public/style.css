@@ -137,6 +137,14 @@ svg {
   text-transform: uppercase;
 }
 
+.brand-signature {
+  margin-top: 7px;
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .workspace-card {
   margin: 0 4px;
   padding: 14px 14px 13px;

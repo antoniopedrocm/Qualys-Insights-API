@@ -394,7 +394,7 @@ async function apiCall(endpoint, needsAuth = true) {
   const headers = { 'Content-Type': 'application/json' };
   if (needsAuth) {
     // btoa (Base64) é uma função nativa do browser
-    headers['Authorization'] = 'Basic ' + btoa('admin:admin123');
+    headers['X-Requested-With'] = 'LegacyQualysInsights';
   }
 
   // O endpoint agora é relativo (o browser sabe que é no mesmo host)
@@ -1324,7 +1324,7 @@ async function analyzeEffectiveness() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Basic ' + btoa('admin:admin123')
+        'X-Requested-With': 'LegacyQualysInsights'
       },
       body: JSON.stringify({ detectionIds })
     });
@@ -1761,7 +1761,7 @@ async function testApiEndpoint() {
 async function exportExcel() {
   try {
     const response = await fetch('/api/export/vulnerabilities/excel', {
-      headers: { 'Authorization': 'Basic ' + btoa('admin:admin123') }
+      headers: { 'X-Requested-With': 'LegacyQualysInsights' }
     });
     
     if (!response.ok) throw new Error(`Erro ${response.status} ao exportar Excel`);
@@ -1785,7 +1785,7 @@ async function exportExcel() {
 async function exportCSV() {
   try {
     const response = await fetch('/api/export/vulnerabilities/csv', {
-      headers: { 'Authorization': 'Basic ' + btoa('admin:admin123') }
+      headers: { 'X-Requested-With': 'LegacyQualysInsights' }
     });
     
     if (!response.ok) throw new Error(`Erro ${response.status} ao exportar CSV`);

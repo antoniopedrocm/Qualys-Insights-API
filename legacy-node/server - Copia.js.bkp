@@ -19,7 +19,7 @@ const QUALYS_CONFIG = {
 };
 
 const auth = basicAuth({
-  users: { 'admin': 'admin123' },
+  users: { 'admin': 'LEGACY_PASSWORD_REMOVED' },
   challenge: true,
   realm: 'Qualys API'
 });
@@ -41,7 +41,7 @@ const qualysClient = axios.create({
     'X-Requested-With': 'API'
   },
   httpsAgent: new https.Agent({  
-    rejectUnauthorized: false
+    rejectUnauthorized: true
   })
 });
 
@@ -751,7 +751,7 @@ app.get('/', (req, res) => {
     async function apiCall(endpoint, needsAuth = true) {
       const headers = { 'Content-Type': 'application/json' };
       if (needsAuth) {
-        headers['Authorization'] = 'Basic ' + btoa('admin:admin123');
+        headers['X-Requested-With'] = 'LegacyQualysInsights';
       }
       
       const response = await fetch(endpoint, { headers });
@@ -1273,7 +1273,7 @@ app.get('/', (req, res) => {
     async function exportExcel() {
       try {
         const response = await fetch('/api/export/vulnerabilities/excel', {
-          headers: { 'Authorization': 'Basic ' + btoa('admin:admin123') }
+          headers: { 'X-Requested-With': 'LegacyQualysInsights' }
         });
         
         if (!response.ok) throw new Error('Erro ao exportar Excel');
@@ -1297,7 +1297,7 @@ app.get('/', (req, res) => {
     async function exportCSV() {
       try {
         const response = await fetch('/api/export/vulnerabilities/csv', {
-          headers: { 'Authorization': 'Basic ' + btoa('admin:admin123') }
+          headers: { 'X-Requested-With': 'LegacyQualysInsights' }
         });
         
         if (!response.ok) throw new Error('Erro ao exportar CSV');
@@ -1744,7 +1744,7 @@ app.listen(PORT, () => {
   console.log(`🚀 API Qualys rodando na porta ${PORT}`);
   console.log(`📊 Dashboard: http://localhost:${PORT}`);
   console.log(`🔐 API Endpoints: http://localhost:${PORT}/api/`);
-  console.log(`   Credenciais: admin / admin123`);
+  console.log(`   Credenciais: admin / LEGACY_PASSWORD_REMOVED`);
   console.log('');
   console.log('✅ Todas as funcionalidades disponíveis!');
 });

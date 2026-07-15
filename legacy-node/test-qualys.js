@@ -11,7 +11,7 @@ const qualysClient = axios.create({
     'X-Requested-With': 'API'
   },
   httpsAgent: new https.Agent({  
-    rejectUnauthorized: false
+    rejectUnauthorized: true
   })
 });
 
