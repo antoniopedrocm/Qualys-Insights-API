@@ -1,0 +1,42 @@
+<HOST_LIST_VM_DETECTION_OUTPUT>
+  <RESPONSE>
+    <HOST_LIST>
+      <HOST>
+        <ID>1</ID>
+        <IP>10.0.0.1</IP>
+        <DNS>srv01.example.local</DNS>
+        <OS>Windows Server 2022</OS>
+        <TAGS>
+          <TAG><NAME>PRD Alta</NAME></TAG>
+        </TAGS>
+        <DETECTION_LIST>
+          <DETECTION>
+            <QID>100001</QID>
+            <UNIQUE_VULN_ID>6385789118</UNIQUE_VULN_ID>
+            <TYPE>CONFIRMED</TYPE>
+            <SEVERITY>5</SEVERITY>
+            <STATUS>Active</STATUS>
+            <FIRST_FOUND_DATETIME>2026-06-01T10:00:00Z</FIRST_FOUND_DATETIME>
+            <LAST_FOUND_DATETIME>2026-07-01T10:00:00Z</LAST_FOUND_DATETIME>
+            <PORT>443</PORT>
+            <PROTOCOL>tcp</PROTOCOL>
+            <SSL>1</SSL>
+            <RESULTS>Sample result</RESULTS>
+            <VULN_INFO>
+              <TITLE>Sample Critical Vulnerability</TITLE>
+              <SOLUTION><SOLUTION>Apply patch</SOLUTION></SOLUTION>
+            </VULN_INFO>
+          </DETECTION>
+          <DETECTION>
+            <QID>100002</QID>
+            <UNIQUE_VULN_ID>6385789119</UNIQUE_VULN_ID>
+            <TYPE>POTENTIAL</TYPE>
+            <SEVERITY>4</SEVERITY>
+            <STATUS>Fixed</STATUS>
+          </DETECTION>
+        </DETECTION_LIST>
+      </HOST>
+    </HOST_LIST>
+  </RESPONSE>
+</HOST_LIST_VM_DETECTION_OUTPUT>
+
