@@ -1,12 +1,36 @@
-# Dependências
-node_modules/
+# Dependencias locais
+**/node_modules/
+.dotnet/
 
-# Arquivos de ambiente (NUNCA enviar para o GitHub)
+# Build .NET
+**/bin/
+**/obj/
+publish/
+TestResults/
+
+# Dados locais e caches persistentes
+data/
+.data/
+*.db
+*.db-shm
+*.db-wal
+
+# Arquivos de ambiente e segredos (NUNCA enviar para o GitHub)
 .env
+**/.env
+*.secret.json
+secrets.json
+*.pfx
+*.p12
+*.cer
+*.key
+*.pem
 
 # Logs
 *.log
 npm-debug.log*
+logs/
+.webapp.*
 
 # Sistema operacional
 .DS_Store

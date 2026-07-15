@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Q-Insights - Análise de Vulnerabilidades</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            900: '#0B1120', // Fundo Principal
+                            800: '#151E32', // Painéis
+                            700: '#1E293B', // Bordas
+                        },
+                        brand: {
+                            blue: '#00A3FF', // Azul Principal
+                            hover: '#008ad6'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Estilização da barra de rolagem */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #151E32; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        
+        /* Truncamento de texto longo (Title, Solution, Results) */
+        .cell-truncate {
+            max-width: 250px; /* Largura máxima da célula */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+        }
+        
+        /* Efeito de hover para ler o texto completo */
+        .cell-truncate:hover {
+            white-space: normal;
+            position: absolute;
+            background: #1e293b;
+            z-index: 50;
+            padding: 12px;
+            border-radius: 6px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+            min-width: 300px;
+            max-width: 500px;
+            border: 1px solid #475569;
+            left: 0;
+            top: -10px;
+            color: #fff;
+        }
+        .table-cell-wrapper { position: relative; }
+    </style>
+</head>
+<body class="bg-dark-900 text-gray-300 font-sans h-screen overflow-hidden flex">
+
+    <!-- Sidebar (Menu Lateral) -->
+    <aside class="w-64 bg-dark-900 border-r border-dark-800 flex flex-col flex-shrink-0">
+        <div class="p-6 flex items-center gap-3">
+            <div class="text-brand-blue text-2xl"><i class="fas fa-shield-alt"></i></div>
+            <div>
+                <h1 class="text-xl font-bold text-brand-blue leading-none">Q-Insights</h1>
+                <span class="text-xs text-gray-500">by Patmos Cyber</span>
+            </div>
+        </div>
+
+        <nav class="flex-1 px-4 space-y-2 mt-4">
+            <!-- NOTA: Se você tiver outras páginas HTML (ex: dashboard.html), atualize os href="#" abaixo -->
+            <a href="#" class="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-400 hover:bg-dark-800 hover:text-white transition-colors">
+                <i class="fas fa-chart-pie w-5"></i><span>Dashboard Executivo</span>
+            </a>
+            <!-- Link Ativo -->
+            <a href="#" class="flex items-center gap-3 px-4 py-3 rounded-lg bg-brand-blue text-white shadow-lg shadow-blue-500/20">
+                <div class="relative"><i class="fas fa-virus w-5"></i><span class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span></div>
+                <span>Análise de Vulnerabilidades</span>
+            </a>
+            <a href="#" class="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-400 hover:bg-dark-800 hover:text-white transition-colors">
+                <i class="fas fa-server w-5"></i><span>Inventário de Hosts</span>
+            </a>
+            <a href="#" class="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-400 hover:bg-dark-800 hover:text-white transition-colors">
+                <i class="fas fa-search w-5"></i><span>Status dos Scans</span>
+            </a>
+        </nav>
+    </aside>
+
+    <!-- Conteúdo Principal -->
+    <main class="flex-1 flex flex-col h-full overflow-hidden relative">
+        
+        <!-- Cabeçalho -->
+        <header class="h-20 bg-dark-900 border-b border-dark-800 flex items-center justify-between px-8 flex-shrink-0">
+            <h2 class="text-2xl font-bold text-white">Análise de Vulnerabilidades</h2>
+            
+            <div class="flex gap-3">
+                <button onclick="carregarDados()" class="bg-brand-blue hover:bg-brand-hover text-white px-4 py-2 rounded-md font-medium transition-colors flex items-center gap-2 text-sm shadow-lg shadow-blue-500/20">
+                    <i class="fas fa-sync-alt" id="refreshIcon"></i> Atualizar
+                </button>
+                <button onclick="exportTableToCSV('relatorio_vuln.csv')" class="bg-dark-800 hover:bg-dark-700 text-gray-300 px-4 py-2 rounded-md font-medium transition-colors flex items-center gap-2 text-sm border border-dark-700">
+                    <i class="fas fa-file-csv text-blue-400"></i> Exportar CSV
+                </button>
+            </div>
+        </header>
+
+        <!-- Área de Rolagem -->
+        <div class="flex-1 overflow-y-auto p-6 space-y-6">
+            
+            <!-- Filtros -->
+            <div class="bg-dark-800 rounded-xl p-6 border border-dark-700 shadow-xl">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Checkboxes de Severidade -->
+                    <div>
+                        <label class="block text-xs uppercase tracking-wider text-gray-500 mb-2">Filtrar por Severidade</label>
+                        <div class="flex flex-wrap gap-2" id="severityFilters">
+                            <label class="cursor-pointer bg-dark-900 px-3 py-1.5 rounded border border-dark-700 hover:border-red-500 flex items-center gap-2">
+                                <input type="checkbox" value="5" checked class="accent-red-500" onchange="aplicarFiltros()"> <span class="text-red-400 text-sm">Crítica</span>
+                            </label>
+                            <label class="cursor-pointer bg-dark-900 px-3 py-1.5 rounded border border-dark-700 hover:border-orange-500 flex items-center gap-2">
+                                <input type="checkbox" value="4" checked class="accent-orange-500" onchange="aplicarFiltros()"> <span class="text-orange-400 text-sm">Alta</span>
+                            </label>
+                            <label class="cursor-pointer bg-dark-900 px-3 py-1.5 rounded border border-dark-700 hover:border-yellow-500 flex items-center gap-2">
+                                <input type="checkbox" value="3" checked class="accent-yellow-500" onchange="aplicarFiltros()"> <span class="text-yellow-400 text-sm">Média</span>
+                            </label>
+                            <label class="cursor-pointer bg-dark-900 px-3 py-1.5 rounded border border-dark-700 hover:border-blue-500 flex items-center gap-2">
+                                <input type="checkbox" value="1,2" checked class="accent-blue-500" onchange="aplicarFiltros()"> <span class="text-blue-400 text-sm">Baixa</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Busca Geral -->
+                    <div>
+                         <label class="block text-xs uppercase tracking-wider text-gray-500 mb-2">Busca Rápida</label>
+                         <div class="relative">
+                             <i class="fas fa-search absolute left-3 top-2.5 text-gray-500"></i>
+                             <input type="text" id="searchInput" onkeyup="aplicarFiltros()" placeholder="Buscar por IP, DNS, Título, QID..." class="w-full bg-dark-900 border border-dark-700 rounded-lg py-2 pl-10 pr-4 text-sm text-gray-300 focus:outline-none focus:border-brand-blue">
+                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabela Principal -->
+            <div class="bg-dark-800 rounded-xl border border-dark-700 shadow-xl flex flex-col h-[650px]">
+                <div class="p-4 border-b border-dark-700 flex justify-between items-center bg-dark-800 rounded-t-xl sticky top-0 z-20">
+                    <h3 class="text-white font-semibold">Lista de Vulnerabilidades <span id="countDisplay" class="text-gray-500 text-sm font-normal ml-2"></span></h3>
+                </div>
+
+                <div class="flex-1 overflow-auto w-full relative">
+                    <!-- Tabela com min-width para forçar scroll horizontal se necessário -->
+                    <table class="w-full text-left border-collapse min-w-[2000px]" id="dataTable">
+                        <thead class="bg-dark-900 text-xs uppercase text-brand-blue sticky top-0 z-10 shadow-sm">
+                            <tr>
+                                <th class="p-4 font-semibold w-32 border-b border-dark-700">Host IP</th>
+                                <th class="p-4 font-semibold w-40 border-b border-dark-700">DNS</th>
+                                <th class="p-4 font-semibold w-48 bg-blue-900/10 border-b border-dark-700">Operating System</th> <!-- Coluna Nova -->
+                                <th class="p-4 font-semibold w-24 border-b border-dark-700">QID</th>
+                                <th class="p-4 font-semibold w-64 bg-blue-900/10 border-b border-dark-700">Title</th> <!-- Coluna Nova -->
+                                <th class="p-4 font-semibold w-28 border-b border-dark-700">Severidade</th>
+                                <th class="p-4 font-semibold w-24 border-b border-dark-700">Status</th>
+                                <th class="p-4 font-semibold w-20 border-b border-dark-700">Porta</th>
+                                <th class="p-4 font-semibold w-24 border-b border-dark-700">Proto</th>
+                                <th class="p-4 font-semibold w-64 bg-blue-900/10 border-b border-dark-700">Solution</th> <!-- Coluna Nova -->
+                                <th class="p-4 font-semibold w-64 bg-blue-900/10 border-b border-dark-700">Results</th> <!-- Coluna Nova -->
+                                <th class="p-4 font-semibold w-40 border-b border-dark-700">Primeira Detecção</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vulnTableBody" class="text-sm divide-y divide-dark-700">
+                            <!-- Preenchido via JS -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Rodapé da Tabela / Paginação -->
+                <div class="p-3 border-t border-dark-700 flex justify-between items-center text-xs text-gray-500 bg-dark-900 rounded-b-xl">
+                    <span id="pageInfo">Carregando...</span>
+                    <div class="flex gap-2">
+                        <button onclick="mudarPagina(-1)" class="px-3 py-1 bg-dark-800 rounded hover:bg-dark-700 border border-dark-700 transition-colors"><i class="fas fa-chevron-left"></i></button>
+                        <button onclick="mudarPagina(1)" class="px-3 py-1 bg-dark-800 rounded hover:bg-dark-700 border border-dark-700 transition-colors"><i class="fas fa-chevron-right"></i></button>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+    </main>
+
+    <script>
+        // CONFIGURAÇÃO
+        const API_URL = '/api/vulnerabilities'; // URL padrão do seu servidor
+        
+        let dadosOriginais = [];
+        let dadosFiltrados = [];
+        let paginaAtual = 1;
+        const itensPorPagina = 50;
+
+        // Inicia ao carregar a página
+        document.addEventListener('DOMContentLoaded', carregarDados);
+
+        async function carregarDados() {
+            const tbody = document.getElementById('vulnTableBody');
+            const icon = document.getElementById('refreshIcon');
+            
+            icon.classList.add('fa-spin');
+            tbody.innerHTML = `<tr><td colspan="12" class="p-10 text-center text-gray-500"><i class="fas fa-circle-notch fa-spin text-2xl mb-2 text-brand-blue"></i><br>Carregando dados...</td></tr>`;
+
+            try {
+                // Tenta buscar da API
+                const response = await fetch(API_URL);
+                if (!response.ok) throw new Error('Erro na requisição');
+                
+                const json = await response.json();
+                
+                // Trata diferentes formatos de resposta (array direto ou objeto { data: [...] })
+                dadosOriginais = Array.isArray(json) ? json : (json.vulnerabilities || json.data || []);
+                
+                aplicarFiltros();
+            } catch (error) {
+                console.error(error);
+                tbody.innerHTML = `<tr><td colspan="12" class="p-10 text-center text-red-400">Erro ao carregar dados.<br>Verifique se o servidor (npm start) está rodando e se a rota da API está correta.</td></tr>`;
+            } finally {
+                icon.classList.remove('fa-spin');
+            }
+        }
+
+        function aplicarFiltros() {
+            const termo = document.getElementById('searchInput').value.toLowerCase();
+            const checkedBoxes = Array.from(document.querySelectorAll('#severityFilters input:checked')).map(cb => cb.value);
+            const severidades = checkedBoxes.map(v => v.split(',')).flat(); // Expande "1,2" para ["1", "2"]
+
+            dadosFiltrados = dadosOriginais.filter(item => {
+                // Filtro de Severidade
+                const sev = String(item.severity || item.SEVERITY || 0);
+                if (!severidades.includes(sev)) return false;
+
+                // Filtro de Texto
+                if (termo) {
+                    const textoLinha = [
+                        item.ip, item.dns, item.qid, item.title, item.os, item.operatingSystem
+                    ].map(v => String(v || '').toLowerCase()).join(' ');
+                    
+                    if (!textoLinha.includes(termo)) return false;
+                }
+                return true;
+            });
+
+            paginaAtual = 1;
+            renderizarTabela();
+        }
+
+        function renderizarTabela() {
+            const tbody = document.getElementById('vulnTableBody');
+            const countDisplay = document.getElementById('countDisplay');
+            const pageInfo = document.getElementById('pageInfo');
+            
+            tbody.innerHTML = '';
+            countDisplay.innerText = `(${dadosFiltrados.length})`;
+
+            if (dadosFiltrados.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="12" class="p-8 text-center text-gray-500">Nenhum dado encontrado.</td></tr>`;
+                pageInfo.innerText = "0 de 0";
+                return;
+            }
+
+            const inicio = (paginaAtual - 1) * itensPorPagina;
+            const fim = inicio + itensPorPagina;
+            const paginados = dadosFiltrados.slice(inicio, fim);
+
+            paginados.forEach(d => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-dark-800/50 transition-colors border-b border-dark-700 group";
+                
+                // Helpers para pegar dados com maiúscula ou minúscula (flexibilidade do JSON)
+                const get = (k1, k2) => d[k1] || d[k2] || d[k1.toUpperCase()] || '-';
+
+                tr.innerHTML = `
+                    <td class="p-4 text-white font-mono text-xs">${get('ip', 'IP')}</td>
+                    <td class="p-4 text-brand-blue">${get('dns', 'DNS')}</td>
+                    <td class="p-4 bg-blue-900/5 text-gray-400 text-xs">${get('os', 'operatingSystem')}</td>
+                    <td class="p-4 font-mono text-xs text-yellow-500">${get('qid', 'QID')}</td>
+                    <td class="p-4 bg-blue-900/5 text-white font-medium">
+                        <div class="table-cell-wrapper"><div class="cell-truncate" title="${get('title', 'TITLE')}">${get('title', 'TITLE')}</div></div>
+                    </td>
+                    <td class="p-4">${badgeSeveridade(get('severity', 'SEVERITY'))}</td>
+                    <td class="p-4 text-xs text-gray-300">${get('status', 'STATUS')}</td>
+                    <td class="p-4 text-gray-400 text-xs">${get('port', 'PORT')}</td>
+                    <td class="p-4 text-gray-400 text-xs">${get('protocol', 'PROTOCOL')}</td>
+                    <td class="p-4 bg-blue-900/5 text-gray-400 text-xs">
+                         <div class="table-cell-wrapper"><div class="cell-truncate">${get('solution', 'SOLUTION')}</div></div>
+                    </td>
+                    <td class="p-4 bg-blue-900/5 text-gray-400 font-mono text-xs">
+                         <div class="table-cell-wrapper"><div class="cell-truncate">${get('results', 'RESULTS')}</div></div>
+                    </td>
+                    <td class="p-4 text-gray-500 text-xs">${get('firstDetected', 'datetime')}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            pageInfo.innerText = `${inicio + 1}-${Math.min(fim, dadosFiltrados.length)} de ${dadosFiltrados.length}`;
+        }
+
+        function badgeSeveridade(nivel) {
+            const n = parseInt(nivel);
+            if (n >= 5) return `<span class="px-2 py-1 bg-red-900/40 text-red-400 rounded text-xs font-bold border border-red-900">CRÍTICA</span>`;
+            if (n === 4) return `<span class="px-2 py-1 bg-orange-900/40 text-orange-400 rounded text-xs font-bold border border-orange-900">ALTA</span>`;
+            if (n === 3) return `<span class="px-2 py-1 bg-yellow-900/40 text-yellow-400 rounded text-xs font-bold border border-yellow-900">MÉDIA</span>`;
+            return `<span class="px-2 py-1 bg-blue-900/40 text-blue-400 rounded text-xs font-bold border border-blue-900">BAIXA</span>`;
+        }
+
+        function mudarPagina(delta) {
+            const totalPaginas = Math.ceil(dadosFiltrados.length / itensPorPagina);
+            const nova = paginaAtual + delta;
+            if (nova >= 1 && nova <= totalPaginas) {
+                paginaAtual = nova;
+                renderizarTabela();
+                document.querySelector('.overflow-y-auto').scrollTo(0,0);
+            }
+        }
+
+        function exportTableToCSV(filename) {
+            if (!dadosFiltrados.length) return;
+            const cols = ['ip', 'dns', 'os', 'qid', 'title', 'severity', 'status', 'port', 'protocol', 'solution', 'results', 'firstDetected'];
+            const header = cols.join(',');
+            const rows = dadosFiltrados.map(d => cols.map(c => {
+                let val = String(d[c] || d[c.toUpperCase()] || d['operatingSystem'] || '');
+                return `"${val.replace(/"/g, '""')}"`;
+            }).join(','));
+            
+            const csv = [header, ...rows].join('\n');
+            const blob = new Blob([csv], {type: 'text/csv'});
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+        }
+    </script>
+</body>
+</html>

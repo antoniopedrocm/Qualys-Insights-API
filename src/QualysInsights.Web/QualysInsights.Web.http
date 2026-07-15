@@ -1,0 +1,6 @@
+@QualysInsights.Web_HostAddress = http://localhost:5043
+
+GET {{QualysInsights.Web_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

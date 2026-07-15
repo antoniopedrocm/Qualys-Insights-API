@@ -1,0 +1,15 @@
+<SCAN_LIST_OUTPUT>
+  <RESPONSE>
+    <SCAN_LIST>
+      <SCAN>
+        <REF>scan/123</REF>
+        <TITLE>Weekly scan</TITLE>
+        <TYPE>Scheduled</TYPE>
+        <LAUNCH_DATETIME>2026-07-01T01:00:00Z</LAUNCH_DATETIME>
+        <STATE><STATE_NAME>Finished</STATE_NAME></STATE>
+        <TARGET>10.0.0.0/24</TARGET>
+      </SCAN>
+    </SCAN_LIST>
+  </RESPONSE>
+</SCAN_LIST_OUTPUT>
+

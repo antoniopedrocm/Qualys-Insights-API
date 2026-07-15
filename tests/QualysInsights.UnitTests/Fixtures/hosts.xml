@@ -1,0 +1,20 @@
+<HOST_LIST_OUTPUT>
+  <RESPONSE>
+    <HOST_LIST>
+      <HOST>
+        <ID>1</ID>
+        <IP>10.0.0.1</IP>
+        <TRACKING_METHOD>IP</TRACKING_METHOD>
+        <DNS>srv01.example.local</DNS>
+        <NETBIOS>SRV01</NETBIOS>
+        <OS>Windows Server 2022</OS>
+        <LAST_VULN_SCAN_DATETIME>2026-07-01T10:00:00Z</LAST_VULN_SCAN_DATETIME>
+        <TAGS>
+          <TAG><NAME>DEV QA</NAME></TAG>
+          <TAG><NAME>Windows/Server</NAME></TAG>
+        </TAGS>
+      </HOST>
+    </HOST_LIST>
+  </RESPONSE>
+</HOST_LIST_OUTPUT>
+
